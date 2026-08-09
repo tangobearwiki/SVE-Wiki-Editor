@@ -2,7 +2,7 @@
 
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
-![Version](https://img.shields.io/badge/version-8.1-orange)
+![Version](https://img.shields.io/badge/version-8.2-orange)
 
 ---
 
@@ -25,6 +25,8 @@
 - 服务器版本更新检测
 - 差异对比（Diff）
 - 批量推送修改到服务器
+- 批量删除页面（支持仅本地/仅云端/全部删除）
+- 语法高亮（WikiText / Markdown / JSON / CSS）
 - 命名空间筛选
 - 暗色模式
 - 自动保存草稿
@@ -54,6 +56,8 @@ MIT License
 - Server version update detection
 - Diff comparison (local vs server)
 - Batch push modifications to the server
+- Batch delete pages (local only / cloud only / both)
+- Syntax highlighting (WikiText / Markdown / JSON / CSS)
 - Namespace filtering
 - Dark mode
 - Auto-save drafts
@@ -83,6 +87,8 @@ MIT License
 - Обнаружение обновлений на сервере
 - Сравнение изменений (Diff)
 - Пакетная отправка изменений на сервер
+- Пакетное удаление страниц (только локально / только в облаке / везде)
+- Подсветка синтаксиса (WikiText / Markdown / JSON / CSS)
 - Фильтрация пространств имён
 - Тёмная тема
 - Автосохранение черновиков

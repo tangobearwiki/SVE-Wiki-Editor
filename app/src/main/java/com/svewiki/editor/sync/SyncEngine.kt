@@ -223,6 +223,79 @@ class SyncEngine(
         return result
     }
 
+    /**
+     * 批量删除页面
+     * @param pages 要删除的页面列表 (title, namespace)
+     * @param reason 删除原因
+     * @param deleteMode 删除模式：0=仅云端, 1=仅本地, 2=全部
+     * @param onPageProgress 每页进度回调 (title, success)
+     */
+    suspend fun deletePages(
+        pages: List<Pair<String, Int>>,
+        reason: String = "批量删除",
+        deleteMode: Int = 2,
+        onPageProgress: (suspend (String, Boolean) -> Unit)? = null
+    ): PushResult {
+        val result = PushResult()
+        var processed = 0
+
+        _progress.value = SyncProgress(status = SyncStatus.PUSHING, message = "开始删除...")
+
+        for ((title, ns) in pages) {
+            _progress.value = _progress.value.copy(
+                message = "删除中：$title",
+                processedPages = processed + 1,
+                totalPages = pages.size
+            )
+
+            try {
+                var cloudSuccess = true
+                var localSuccess = true
+
+                // 云端删除
+                if (deleteMode == 0 || deleteMode == 2) {
+                    val deleteResult = api.deletePage(title, reason)
+                    if (deleteResult.isFailure) {
+                        cloudSuccess = false
+                        result.failed.add(
+                            title to (deleteResult.exceptionOrNull()?.message ?: "云端删除失败")
+                        )
+                    }
+                }
+
+                // 本地删除
+                if (deleteMode == 1 || deleteMode == 2) {
+                    localSuccess = storage.deleteLocalPage(title, ns)
+                }
+
+                if (cloudSuccess && localSuccess) {
+                    result.success.add(title)
+                    onPageProgress?.invoke(title, true)
+                } else if (!cloudSuccess) {
+                    // 云端失败但本地成功（云失败时已在 failed 添加）
+                    onPageProgress?.invoke(title, false)
+                } else {
+                    // 本地失败
+                    result.failed.add(title to "本地文件删除失败")
+                    onPageProgress?.invoke(title, false)
+                }
+            } catch (e: Exception) {
+                result.failed.add(title to (e.message ?: "未知错误"))
+                onPageProgress?.invoke(title, false)
+            }
+            processed++
+        }
+
+        storage.appendLog("批量删除", "成功 ${result.success.size}，失败 ${result.failed.size}")
+        _progress.value = SyncProgress(
+            status = SyncStatus.COMPLETED,
+            message = "删除完成：成功 ${result.success.size}，失败 ${result.failed.size}",
+            processedPages = processed,
+            totalPages = pages.size
+        )
+        return result
+    }
+
     fun getOverview(): SyncOverview {
         val metadata = storage.getMetadata()
         val totalPages = storage.loadAllPages().size

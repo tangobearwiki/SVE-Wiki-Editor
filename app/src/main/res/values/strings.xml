@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SVE Wiki 编辑器</string>
+    <string name="login">登录</string>
+    <string name="logout">退出登录</string>
+    <string name="edit">编辑</string>
+    <string name="push">推送</string>
+    <string name="search">搜索</string>
+    <string name="preview">预览</string>
+    <string name="settings">设置</string>
+    <string name="batch_replace">批量替换</string>
+    <string name="auto_push">自动推送</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="page_title">页面标题</string>
+    <string name="page_content">页面内容</string>
+    <string name="summary">编辑摘要</string>
+    <string name="push_success">推送成功</string>
+    <string name="push_failed">推送失败</string>
+    <string name="confirm">确认</string>
+    <string name="cancel">取消</string>
+    <string name="base_url">https://sve.p1.wiki</string>
+</resources>

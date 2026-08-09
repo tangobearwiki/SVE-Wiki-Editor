@@ -14,6 +14,7 @@ import com.svewiki.editor.api.SveWikiApi
 import com.svewiki.editor.data.LocalPage
 import com.svewiki.editor.data.LocalStorageManager
 import com.svewiki.editor.data.Preferences
+import com.svewiki.editor.data.WikiNamespaces
 import com.svewiki.editor.sync.SyncEngine
 import com.svewiki.editor.util.DiffUtil
 import kotlinx.coroutines.*
@@ -35,6 +36,7 @@ class SyncFragment : Fragment() {
     private lateinit var tvModifiedSummary: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSearch: Button
+    private lateinit var btnDeletePages: Button
     private lateinit var spinnerNamespace: Spinner
 
     private var api: SveWikiApi? = null
@@ -74,6 +76,7 @@ class SyncFragment : Fragment() {
         etSearch = view.findViewById(R.id.et_search)
         btnSearch = view.findViewById(R.id.btn_search)
         spinnerNamespace = view.findViewById(R.id.spinner_namespace)
+        btnDeletePages = view.findViewById(R.id.btn_delete_pages)
 
         val activity = requireActivity()
         if (activity is MainActivity) {
@@ -86,6 +89,7 @@ class SyncFragment : Fragment() {
         btnPullAll.setOnClickListener { pullAll() }
         btnPushSelected.setOnClickListener { pushSelected() }
         btnSearch.setOnClickListener { searchLocalPages() }
+        btnDeletePages.setOnClickListener { showDeleteDialog() }
 
         setupNamespaceSpinner()
 
@@ -451,5 +455,118 @@ class SyncFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         job?.cancel()
+    }
+
+    /** 显示批量删除对话框：选择本地页面 + 删除模式 */
+    private fun showDeleteDialog() {
+        if (prefs?.isLoggedIn != true) {
+            tvStatus.text = "请先在「设置」中登录"
+            Toast.makeText(requireContext(), "请先登录", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val allPages = storage?.loadAllPages() ?: emptyList()
+        if (allPages.isEmpty()) {
+            Toast.makeText(requireContext(), "本地没有可删除的页面", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 用多选对话框列出本地页面
+        val titles = allPages.map { "${WikiNamespaces.getDisplayName(it.namespace)} · ${it.title}" }
+            .toTypedArray()
+        val checked = BooleanArray(allPages.size)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("选择要删除的页面（可多选）")
+            .setMultiChoiceItems(titles, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setPositiveButton("下一步") { _, _ ->
+                val selected = allPages.filterIndexed { index, _ -> checked[index] }
+                if (selected.isEmpty()) {
+                    Toast.makeText(requireContext(), "未选择任何页面", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                showDeleteModeDialog(selected)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 选择删除模式：仅本地 / 仅云端 / 全部，并确认执行 */
+    private fun showDeleteModeDialog(pages: List<LocalPage>) {
+        val modes = arrayOf("仅删除本地", "仅删除云端", "删除本地 + 云端")
+        AlertDialog.Builder(requireContext())
+            .setTitle("选择删除方式（${pages.size} 个页面）")
+            .setItems(modes) { _, which ->
+                val mode = when (which) {
+                    0 -> 1
+                    1 -> 0
+                    else -> 2
+                }
+                confirmDelete(pages, mode)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 二次确认后执行批量删除 */
+    private fun confirmDelete(pages: List<LocalPage>, mode: Int) {
+        val modeName = when (mode) {
+            0 -> "仅删除云端"
+            1 -> "仅删除本地"
+            else -> "删除本地 + 云端"
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("确认删除")
+            .setMessage("即将${modeName} ${pages.size} 个页面，此操作不可恢复！\n\n${pages.joinToString("\n") { it.title }}")
+            .setPositiveButton("确认删除") { _, _ -> executeDelete(pages, mode) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 执行批量删除 */
+    private fun executeDelete(pages: List<LocalPage>, mode: Int) {
+        val engine = syncEngine ?: return
+        job = CoroutineScope(Dispatchers.Main).launch {
+            btnDeletePages.isEnabled = false
+            btnPullAll.isEnabled = false
+            btnPushSelected.isEnabled = false
+            progressBar.visibility = View.VISIBLE
+            progressBar.isIndeterminate = true
+            tvStatus.text = "开始删除..."
+
+            val pagePairs = pages.map { it.title to it.namespace }
+            val result = withContext(Dispatchers.IO) {
+                engine.deletePages(
+                    pages = pagePairs,
+                    reason = prefs?.defaultSummary ?: "批量删除",
+                    deleteMode = mode
+                ) { title, success ->
+                    requireActivity().runOnUiThread {
+                        tvStatus.text = if (success) "已删除：$title" else "失败：$title"
+                    }
+                }
+            }
+
+            progressBar.visibility = View.GONE
+            btnDeletePages.isEnabled = true
+            btnPullAll.isEnabled = true
+            btnPushSelected.isEnabled = true
+            selectedPages.clear()
+            refreshOverview()
+            refreshModifiedList()
+            refreshLocalPageList()
+
+            val msg = "删除完成：成功 ${result.success.size}，失败 ${result.failed.size}"
+            tvStatus.text = msg
+            if (result.failed.isNotEmpty()) {
+                val sb = StringBuilder()
+                result.failed.forEach { (title, reason) -> sb.appendLine("$title: $reason") }
+                Toast.makeText(requireContext(), sb.toString(), Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 }

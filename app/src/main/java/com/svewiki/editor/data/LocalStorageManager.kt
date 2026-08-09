@@ -221,6 +221,28 @@ class LocalStorageManager(private val context: Context) {
     }
 
     /**
+     * 删除单个本地页面文件
+     */
+    fun deleteLocalPage(title: String, namespace: Int): Boolean {
+        val file = pageFile(title, namespace)
+        return if (file.exists()) file.delete() else false
+    }
+
+    /**
+     * 批量删除本地页面
+     */
+    fun deleteLocalPages(pages: List<Pair<String, Int>>): Int {
+        var count = 0
+        pages.forEach { (title, ns) ->
+            if (deleteLocalPage(title, ns)) count++
+        }
+        if (count > 0) {
+            appendLog("批量删除本地", "删除了 $count 个页面")
+        }
+        return count
+    }
+
+    /**
      * 清除所有数据
      */
     fun clearAll() {

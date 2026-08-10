@@ -199,11 +199,16 @@ class SettingsFragment : Fragment() {
         dialog.show()
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
+    override fun onPause() {
+        super.onPause()
+        // 在 onPause 安全保存设置（此时 view 仍存在）
         prefs?.let { p ->
             p.defaultSummary = etDefaultSummary.text.toString().trim().ifEmpty { "自动编辑" }
         }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
         job?.cancel()
     }
 }

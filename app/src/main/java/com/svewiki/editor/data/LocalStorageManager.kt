@@ -101,7 +101,8 @@ class LocalStorageManager(private val context: Context) {
      */
     fun loadModifiedPages(): List<LocalPage> {
         val result = mutableListOf<LocalPage>()
-        val namespaces = listOf(0, 2, 4, 6, 8, 10, 12, 14)
+        // 包含所有支持同步的命名空间，含模块(828)
+        val namespaces = listOf(0, 2, 4, 6, 8, 10, 12, 14, 828)
         namespaces.forEach { ns ->
             result.addAll(loadPagesByNamespace(ns).filter { it.isModified })
         }
@@ -144,13 +145,14 @@ class LocalStorageManager(private val context: Context) {
 
     /**
      * 标记页面为已推送（重置修改标记）
+     * @param newRevisionId 服务器返回的新版本号，不传则用本地值
      */
-    fun markPushed(title: String, namespace: Int) {
+    fun markPushed(title: String, namespace: Int, newRevisionId: Long = -1) {
         val page = loadPage(title, namespace) ?: return
         val updated = page.copy(
             isModified = false,
             lastSyncTime = System.currentTimeMillis(),
-            revisionId = page.revisionId + 1
+            revisionId = if (newRevisionId >= 0) newRevisionId else page.revisionId
         )
         savePage(updated)
     }
@@ -169,7 +171,7 @@ class LocalStorageManager(private val context: Context) {
      */
     fun getNamespaceOverview(): List<Pair<String, Int>> {
         val result = mutableListOf<Pair<String, Int>>()
-        val namespaces = listOf(0, 2, 4, 6, 8, 10, 12, 14)
+        val namespaces = listOf(0, 2, 4, 6, 8, 10, 12, 14, 828)
         namespaces.forEach { ns ->
             val count = getPageCount(ns)
             if (count > 0) {

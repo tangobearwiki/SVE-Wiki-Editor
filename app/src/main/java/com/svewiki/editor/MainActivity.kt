@@ -14,6 +14,7 @@ import com.svewiki.editor.data.LocalStorageManager
 import com.svewiki.editor.data.Preferences
 import com.svewiki.editor.sync.SyncEngine
 import com.svewiki.editor.ui.EditorFragment
+import com.svewiki.editor.ui.ManageFragment
 import com.svewiki.editor.ui.SettingsFragment
 import com.svewiki.editor.ui.SyncFragment
 import com.svewiki.editor.ui.ViewPagerAdapter
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     // 持有 fragment 引用
     private var editorFragment: EditorFragment? = null
     private var syncFragment: SyncFragment? = null
+    private var manageFragment: ManageFragment? = null
     private var settingsFragment: SettingsFragment? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,13 +67,15 @@ class MainActivity : AppCompatActivity() {
         // 自动登录（异步，不阻塞 UI）
         autoLogin()
 
-        // 设置 ViewPager（3 个 tab）
+        // 设置 ViewPager（4 个 tab）
         editorFragment = EditorFragment()
         syncFragment = SyncFragment()
+        manageFragment = ManageFragment()
         settingsFragment = SettingsFragment()
         val fragments = listOf(
             editorFragment!!,
             syncFragment!!,
+            manageFragment!!,
             settingsFragment!!
         )
         val adapter = ViewPagerAdapter(this, fragments)
@@ -91,8 +95,13 @@ class MainActivity : AppCompatActivity() {
                     toolbar.title = "全站同步"
                     true
                 }
-                R.id.nav_settings -> {
+                R.id.nav_manage -> {
                     viewPager.currentItem = 2
+                    toolbar.title = "页面管理"
+                    true
+                }
+                R.id.nav_settings -> {
+                    viewPager.currentItem = 3
                     toolbar.title = "设置"
                     true
                 }
@@ -105,7 +114,8 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_editor -> viewPager.currentItem = 0
                 R.id.nav_sync -> viewPager.currentItem = 1
-                R.id.nav_settings -> viewPager.currentItem = 2
+                R.id.nav_manage -> viewPager.currentItem = 2
+                R.id.nav_settings -> viewPager.currentItem = 3
             }
             drawerLayout.closeDrawers()
             true
@@ -128,11 +138,13 @@ class MainActivity : AppCompatActivity() {
 
     /** 自动登录（异步，不阻塞 UI） */
     private fun autoLogin() {
+        // 仅当本地有登录标记且账号密码非空时才尝试自动登录
         if (prefs.isLoggedIn && prefs.username.isNotEmpty() && prefs.password.isNotEmpty()) {
             CoroutineScope(Dispatchers.IO).launch {
                 val result = api.login(prefs.username, prefs.password)
                 if (result.isFailure) {
                     withContext(Dispatchers.Main) {
+                        // 登录失败：清除登录标记，避免"假登录"导致推送/删除静默失败
                         prefs.isLoggedIn = false
                     }
                 }

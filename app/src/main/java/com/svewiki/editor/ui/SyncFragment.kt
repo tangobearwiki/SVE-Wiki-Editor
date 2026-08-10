@@ -1,11 +1,15 @@
 package com.svewiki.editor.ui
 
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.*
 import androidx.fragment.app.Fragment
 import com.svewiki.editor.MainActivity
@@ -141,7 +145,10 @@ class SyncFragment : Fragment() {
     /** 刷新本地页面列表（默认主空间，按筛选器） */
     private fun refreshLocalPageList() {
         val allPages = storage?.loadAllPages()?.filter { it.namespace == currentNamespaceFilter }
-            ?.sortedByDescending { it.lastModifiedTime } ?: emptyList()
+            ?.sortedByDescending {
+                // 已修改的按修改时间排，未修改的按同步时间排
+                if (it.lastModifiedTime > 0) it.lastModifiedTime else it.lastSyncTime
+            } ?: emptyList()
         llFetchedPages.removeAllViews()
         if (allPages.isEmpty()) {
             val tv = TextView(requireContext())
@@ -155,13 +162,15 @@ class SyncFragment : Fragment() {
         }
     }
 
-    /** 创建带时间信息的行 */
+    /** 创建带时间信息的行（本地页面列表） */
     private fun createTimeRow(page: LocalPage): View {
         val row = LinearLayout(requireContext())
         row.orientation = LinearLayout.VERTICAL
-        row.setPadding(8, 6, 8, 6)
+        row.setPadding(12, 10, 12, 10)
         row.isClickable = true
         row.isFocusable = true
+        row.background = android.graphics.drawable.ColorDrawable(
+            resources.getColor(R.color.surface, null))
 
         val titleRow = LinearLayout(requireContext())
         titleRow.orientation = LinearLayout.HORIZONTAL
@@ -206,6 +215,9 @@ class SyncFragment : Fragment() {
             val diffBtn = Button(requireContext())
             diffBtn.text = "Diff"
             diffBtn.textSize = 10f
+            diffBtn.minHeight = 0
+            diffBtn.minimumHeight = 0
+            diffBtn.setPadding(8, 2, 8, 2)
             diffBtn.setOnClickListener { showDiff(page) }
             timeRow.addView(diffBtn)
         }
@@ -248,8 +260,10 @@ class SyncFragment : Fragment() {
     private fun createModifiedRow(page: LocalPage): View {
         val row = LinearLayout(requireContext())
         row.orientation = LinearLayout.HORIZONTAL
-        row.setPadding(8, 8, 8, 8)
+        row.setPadding(12, 12, 12, 12)
         row.gravity = android.view.Gravity.CENTER_VERTICAL
+        row.background = android.graphics.drawable.ColorDrawable(
+            resources.getColor(R.color.surface, null))
 
         val cb = CheckBox(requireContext())
         cb.isChecked = selectedPages.contains(pageKey(page))
@@ -273,6 +287,9 @@ class SyncFragment : Fragment() {
         val diffBtn = Button(requireContext())
         diffBtn.text = "Diff"
         diffBtn.textSize = 10f
+        diffBtn.minHeight = 0
+        diffBtn.minimumHeight = 0
+        diffBtn.setPadding(8, 2, 8, 2)
         diffBtn.setOnClickListener { showDiff(page) }
 
         row.addView(cb)
@@ -291,11 +308,30 @@ class SyncFragment : Fragment() {
                 apiRef.fetchPageForDiff(page.title)
             }
             serverResult.onSuccess { serverPage ->
-                val diffText = DiffUtil.diff(serverPage.content, page.content)
+                // 生成 HTML 左右分栏 diff
+                val diffHtml = DiffUtil.diffHtml(serverPage.content, page.content)
+
+                // 用 WebView 对话框显示
+                val webView = WebView(requireContext())
+                webView.settings.apply {
+                    builtInZoomControls = true
+                    displayZoomControls = false
+                    loadWithOverviewMode = true
+                    useWideViewPort = true
+                    defaultTextEncodingName = "utf-8"
+                }
+                webView.loadDataWithBaseURL(null, diffHtml, "text/html", "utf-8", null)
+
                 AlertDialog.Builder(requireContext())
                     .setTitle("Diff - ${page.title}")
-                    .setMessage(diffText)
-                    .setPositiveButton("确定", null)
+                    .setView(webView)
+                    .setPositiveButton("关闭", null)
+                    .setNegativeButton("复制文本") { _, _ ->
+                        val plainText = DiffUtil.diff(serverPage.content, page.content)
+                        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("diff", plainText))
+                        Toast.makeText(requireContext(), "差异文本已复制", Toast.LENGTH_SHORT).show()
+                    }
                     .show()
             }.onFailure { e ->
                 tvStatus.text = "获取服务器版本失败：${e.message}"
@@ -471,7 +507,7 @@ class SyncFragment : Fragment() {
             return
         }
 
-        // 用多选对话框列出本地页面
+        // 用多选对话框列出本地页面（当前筛选：${WikiNamespaces.getDisplayName(currentNamespaceFilter)}）
         val titles = allPages.map { "${WikiNamespaces.getDisplayName(it.namespace)} · ${it.title}" }
             .toTypedArray()
         val checked = BooleanArray(allPages.size)

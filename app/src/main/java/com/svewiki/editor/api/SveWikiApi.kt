@@ -227,8 +227,10 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
         try {
             val titles = mutableListOf<String>()
             var apcontinue: String? = null
+            var maxPages = 10000 // 死循环保护：最多拉取 10000 个页面
+            var totalFetched = 0
 
-            while (true) {
+            while (totalFetched < maxPages) {
                 var url = "${getApiUrl()}?action=query&list=allpages&apnamespace=$namespace&aplimit=$limit&format=json"
                 if (apcontinue != null) {
                     url += "&apcontinue=${URLEncoder.encode(apcontinue, "UTF-8")}"
@@ -239,10 +241,12 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
                 val json = JsonParser.parseString(body).asJsonObject
 
                 val pages = json.getAsJsonObject("query")?.getAsJsonArray("allpages")
+                val pageCount = pages?.size() ?: 0
                 pages?.forEach { element ->
                     val title = element.asJsonObject.get("title")?.asString ?: ""
                     if (title.isNotEmpty()) titles.add(title)
                 }
+                totalFetched += pageCount
 
                 // 检查是否有下一页
                 val continueObj = json.getAsJsonObject("continue")
@@ -487,8 +491,11 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
 
     suspend fun queryCategory(category: String, limit: Int = 50): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            val url = "${getApiUrl()}?action=query&list=categorymembers&cmtitle=Category:${
-                URLEncoder.encode(category, "UTF-8")
+            // 兼容：若分类名已带 "Category:" 前缀则不再重复添加
+            val catTitle = if (category.startsWith("Category:") || category.startsWith("分类:")) category
+                else "Category:$category"
+            val url = "${getApiUrl()}?action=query&list=categorymembers&cmtitle=${
+                URLEncoder.encode(catTitle, "UTF-8")
             }&cmlimit=$limit&format=json"
             val req = Request.Builder().url(url).headers(getHeaders()).get().build()
             val resp = client.newCall(req).execute()
@@ -571,6 +578,56 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
             }
         }
         Result.success(result)
+    }
+
+    // ============ 移动页面 ============
+
+    suspend fun movePage(
+        from: String,
+        to: String,
+        reason: String = "移动页面",
+        moveTalk: Boolean = true,
+        moveSubpages: Boolean = false
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val csrfResult = getCsrfToken()
+            if (csrfResult.isFailure) return@withContext Result.failure(csrfResult.exceptionOrNull()!!)
+            val csrfToken = csrfResult.getOrThrow()
+
+            val form = buildForm(
+                "action" to "move",
+                "format" to "json",
+                "from" to from,
+                "to" to to,
+                "reason" to reason,
+                "token" to csrfToken,
+                if (moveTalk) "movetalk" to "1" else "notalk" to "1",
+                if (moveSubpages) "movesubpages" to "1" else "nmsubpages" to "1"
+            )
+
+            val req = Request.Builder()
+                .url(getApiUrl())
+                .headers(getHeaders())
+                .post(form.toRequestBody(formMediaType))
+                .build()
+            val resp = client.newCall(req).execute()
+            val body = resp.body?.string() ?: return@withContext Result.failure(Exception("Empty response"))
+            val json = JsonParser.parseString(body).asJsonObject
+            val error = json.get("error")
+            if (error != null) {
+                val code = error.asJsonObject.get("code")?.asString ?: "unknown"
+                val info = error.asJsonObject.get("info")?.asString ?: ""
+                return@withContext Result.failure(Exception("API error: $code - $info"))
+            }
+            val move = json.getAsJsonObject("move")
+            if (move != null) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Move failed: unexpected response"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     // ============ 删除页面 ============

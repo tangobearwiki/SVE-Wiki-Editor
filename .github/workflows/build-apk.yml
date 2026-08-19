@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:    # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -23,6 +23,19 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install aapt2 to /usr/bin
+        run: |
+          AAPT2_PATH=$(find $ANDROID_HOME -name "aapt2" -type f 2>/dev/null | head -1)
+          if [ -n "$AAPT2_PATH" ]; then
+            sudo cp "$AAPT2_PATH" /usr/bin/aapt2
+            sudo chmod +x /usr/bin/aapt2
+            echo "aapt2 installed from $AAPT2_PATH"
+          else
+            echo "aapt2 not found in SDK, downloading..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq google-android-build-tools-installer 2>/dev/null || true
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

@@ -600,7 +600,7 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
                         val ns = obj.get("ns")?.asInt ?: 0
                         val action = obj.get("action")?.asString ?: ""
                         val title = obj.get("title")?.asString
-                        val logPage = obj.get("logpage")?.asString ?: title
+                        val logPage = obj.get("logpage")?.asString ?: title ?: return@forEach
 
                         if (logPage !in seenPages) {
                             seenPages.add(logPage)

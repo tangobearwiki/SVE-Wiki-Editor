@@ -34,9 +34,57 @@ class LocalStorageManager(private val context: Context) {
     }
 
     private fun pageFile(title: String, namespace: Int): File {
-        // 文件名：将标题中的 / 和 : 替换为 _
-        val safeName = title.replace("/", "_").replace(":", "_").replace(" ", "_")
+        // 对标 WiGit EscapeUtils：用 %XX 转义非法字符，防止路径注入
+        val safeName = escapeFilename(title)
         return File(namespaceDir(namespace), "$safeName.json")
+    }
+
+    /**
+     * 文件名安全转义（对标 WiGit EscapeUtils.escape_filename）
+     * 将路径分隔符和 Windows 禁止字符转为 %XX
+     */
+    private fun escapeFilename(filename: String): String {
+        val escapeMap = linkedMapOf(
+            "%" to "%25",  // 先转义百分号
+            "/" to "%2F",
+            "\\" to "%5C",
+            "\"" to "%22",
+            "*" to "%2A",
+            ":" to "%3A",
+            "<" to "%3C",
+            ">" to "%3E",
+            "?" to "%3F",
+            "|" to "%7C"
+        )
+        var result = filename
+        for ((char, escaped) in escapeMap) {
+            result = result.replace(char, escaped)
+        }
+        return result
+    }
+
+    /**
+     * 文件名反转义（对标 WiGit EscapeUtils.unescape_filename）
+     */
+    private fun unescapeFilename(filename: String): String {
+        val escapeMap = linkedMapOf(
+            "%" to "%25",
+            "/" to "%2F",
+            "\\" to "%5C",
+            "\"" to "%22",
+            "*" to "%2A",
+            ":" to "%3A",
+            "<" to "%3C",
+            ">" to "%3E",
+            "?" to "%3F",
+            "|" to "%7C"
+        )
+        var result = filename
+        // 反转义：逆序替换
+        for ((char, escaped) in escapeMap.toList().reversed()) {
+            result = result.replace(escaped, char)
+        }
+        return result
     }
 
     private fun metadataFile(): File = File(dataDir, "metadata.json")
@@ -208,6 +256,56 @@ class LocalStorageManager(private val context: Context) {
         metadataFile().writeText(gson.toJson(metadata), Charsets.UTF_8)
     }
 
+    // ============ 修订版本追踪 ============
+
+    private fun revisionFile(): File = File(dataDir, "revision.json")
+
+    /**
+     * 获取修订版本追踪数据
+     */
+    fun getRevisionTracker(): RevisionTracker {
+        val file = revisionFile()
+        if (!file.exists()) return RevisionTracker()
+        return try {
+            gson.fromJson(file.readText(Charsets.UTF_8), RevisionTracker::class.java)
+                ?: RevisionTracker()
+        } catch (e: Exception) {
+            RevisionTracker()
+        }
+    }
+
+    /**
+     * 保存修订版本追踪数据
+     */
+    fun saveRevisionTracker(tracker: RevisionTracker) {
+        revisionFile().writeText(gson.toJson(tracker), Charsets.UTF_8)
+    }
+
+    /**
+     * 更新单页修订号
+     */
+    fun updateRevision(pageTitle: String, revisionId: Long) {
+        val tracker = getRevisionTracker()
+        tracker.update(pageTitle, revisionId)
+        saveRevisionTracker(tracker)
+    }
+
+    /**
+     * 获取单页修订号
+     */
+    fun getRevision(pageTitle: String): Long? {
+        return getRevisionTracker().getRevision(pageTitle)
+    }
+
+    /**
+     * 移除单页修订记录（页面被删除时）
+     */
+    fun removeRevision(pageTitle: String) {
+        val tracker = getRevisionTracker()
+        tracker.remove(pageTitle)
+        saveRevisionTracker(tracker)
+    }
+
     /**
      * 获取数据总大小
      */
@@ -277,10 +375,70 @@ class LocalStorageManager(private val context: Context) {
 }
 
 /**
- * 同步元数据
- */
+  * 同步元数据
+  */
 data class SyncMetadata(
     val lastSyncTime: Long = 0,
     val totalPages: Int = 0,
     val version: Int = 1
 )
+
+/**
+ * 修订版本追踪（对标 WiGit Revision）
+ * 记录每页的 revisionId，用于增量同步和冲突检测
+ */
+data class RevisionTracker(
+    val lastUpdateTime: String = "",      // ISO8601 上次同步时间
+    val lastRevisionId: Long = -1,        // 最后一次处理的修订号
+    val revisions: MutableMap<String, Long> = mutableMapOf()  // pageTitle -> revisionId
+) {
+    /**
+     * 更新某页的修订号
+     */
+    fun update(pageTitle: String, revisionId: Long) {
+        revisions[pageTitle] = revisionId
+        if (revisionId > lastRevisionId) {
+            lastRevisionId = revisionId
+        }
+    }
+
+    /**
+     * 获取某页的修订号
+     */
+    fun getRevision(pageTitle: String): Long? = revisions[pageTitle]
+
+    /**
+     * 判断本地是否与远程同步
+     */
+    fun isUpToDate(remoteRevisionId: Long): Boolean {
+        return lastRevisionId == remoteRevisionId
+    }
+
+    /**
+     * 移除某页的修订记录（页面被删除时调用）
+     */
+    fun remove(pageTitle: String) {
+        revisions.remove(pageTitle)
+    }
+}
+
+/**
+ * 内容模型映射（对标 WiGit get_content_model）
+ * 根据内容模型名返回文件扩展名
+ */
+object ContentModel {
+    private val modelToExt = mapOf(
+        "wikitext" to "mediawiki",
+        "json" to "json",
+        "javascript" to "js",
+        "css" to "css",
+        "scribunto" to "lua"
+    )
+
+    fun getExtension(model: String): String = modelToExt[model.lowercase()] ?: "txt"
+
+    fun getModelFromNamespace(namespace: Int): String = when (namespace) {
+        828 -> "scribunto"  // 模块空间 → Lua
+        else -> "wikitext"
+    }
+}

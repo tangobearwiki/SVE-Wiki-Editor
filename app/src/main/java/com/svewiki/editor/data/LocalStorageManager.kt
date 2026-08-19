@@ -388,9 +388,9 @@ data class SyncMetadata(
  * 记录每页的 revisionId，用于增量同步和冲突检测
  */
 data class RevisionTracker(
-    val lastUpdateTime: String = "",      // ISO8601 上次同步时间
-    val lastRevisionId: Long = -1,        // 最后一次处理的修订号
-    val revisions: MutableMap<String, Long> = mutableMapOf()  // pageTitle -> revisionId
+    var lastUpdateTime: String = "",      // ISO8601 上次同步时间
+    var lastRevisionId: Long = -1,        // 最后一次处理的修订号
+    var revisions: MutableMap<String, Long> = mutableMapOf()  // pageTitle -> revisionId
 ) {
     /**
      * 更新某页的修订号

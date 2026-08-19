@@ -461,7 +461,11 @@ class SyncFragment : Fragment() {
             tvStatus.text = "开始推送选中..."
 
             val result = withContext(Dispatchers.IO) {
-                engine.pushPages(pagesToPush, prefs?.defaultSummary ?: "SVE Wiki 编辑器自动推送") { title, success ->
+                engine.pushPages(
+                    pagesToPush,
+                    prefs?.defaultSummary ?: "SVE Wiki 编辑器自动推送",
+                    checkConflict = true
+                ) { title, success ->
                     requireActivity().runOnUiThread {
                         tvStatus.text = if (success) "已推送：$title" else "失败：$title"
                     }

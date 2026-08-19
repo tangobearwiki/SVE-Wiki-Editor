@@ -1,21 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#1B5E20</color>
-    <color name="primary_variant">#0D3B0F</color>
-    <color name="on_primary">#FFFFFF</color>
-    <color name="secondary">#2E7D32</color>
-    <color name="secondary_variant">#1B5E20</color>
-    <color name="on_secondary">#FFFFFF</color>
-    <color name="background">#121212</color>
-    <color name="on_background">#E0E0E0</color>
-    <color name="surface">#1E1E1E</color>
-    <color name="on_surface">#E0E0E0</color>
-    <color name="error">#CF6679</color>
-    <color name="on_error">#000000</color>
+    <!-- M3 暗色主题色板 -->
+    <color name="primary">#9BD594</color>
+    <color name="on_primary">#0A3B14</color>
+    <color name="primary_container">#1E5B2E</color>
+    <color name="on_primary_container">#B7F3B0</color>
+    <color name="secondary">#9DD4BC</color>
+    <color name="on_secondary">#0A3B28</color>
+    <color name="secondary_container">#235C45</color>
+    <color name="on_secondary_container">#B9F0C8</color>
+    <color name="tertiary">#9BC9F5</color>
+    <color name="on_tertiary">#003352</color>
+    <color name="tertiary_container">#16486A</color>
+    <color name="on_tertiary_container">#C2E6FF</color>
+    <color name="background">#121411</color>
+    <color name="on_background">#E1E3DD</color>
+    <color name="surface">#191C18</color>
+    <color name="on_surface">#E1E3DD</color>
+    <color name="surface_variant">#414941</color>
+    <color name="on_surface_variant">#C1C7BC</color>
+    <color name="outline">#8B9388</color>
+    <color name="error">#FFB4AB</color>
+    <color name="on_error">#690005</color>
     <color name="card_background">#1E1E1E</color>
     <color name="divider">#2C2C2C</color>
-    <color name="text_primary">#E0E0E0</color>
+    <color name="text_primary">#E1E3DD</color>
     <color name="text_secondary">#9E9E9E</color>
     <color name="accent_green">#66BB6A</color>
     <color name="accent_orange">#FFB74D</color>
+    <color name="error_color">#FFB4AB</color>
 </resources>

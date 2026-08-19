@@ -515,6 +515,214 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
         }
     }
 
+    // ============ 增量同步：获取最近变更（对标 WiGit get_recent_changes） ============
+
+    /**
+     * 获取自指定时间以来的最近变更页面列表
+     * @param sinceTimestamp ISO8601 格式，如 "2026-08-01T00:00:00Z"
+     * @param namespaces 只获取这些命名空间的变更
+     * @return 变更页面标题列表
+     */
+    suspend fun getRecentChanges(
+        sinceTimestamp: String,
+        namespaces: List<Int> = listOf(0, 2, 4, 6, 8, 10, 12, 14, 828)
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        try {
+            val titles = mutableSetOf<String>()
+            var rccontinue: String? = null
+
+            while (true) {
+                var url = "${getApiUrl()}?action=query&list=recentchanges" +
+                    "&rcend=${URLEncoder.encode(sinceTimestamp, "UTF-8")}" +
+                    "&rcdir=older&rctype=edit%7Cnew&rctoponly=1&rcprop=title%7Cids%7Ctimestamp%7Ccomment&rclimit=200&format=json"
+                if (rccontinue != null) {
+                    url += "&rccontinue=${URLEncoder.encode(rccontinue, "UTF-8")}"
+                }
+                val req = Request.Builder().url(url).headers(getHeaders()).get().build()
+                val resp = client.newCall(req).execute()
+                val body = resp.body?.string() ?: break
+                val json = JsonParser.parseString(body).asJsonObject
+
+                val changes = json.getAsJsonObject("query")?.getAsJsonArray("recentchanges")
+                changes?.forEach { element ->
+                    val obj = element.asJsonObject
+                    val ns = obj.get("ns")?.asInt ?: 0
+                    if (ns in namespaces) {
+                        val title = obj.get("title")?.asString ?: ""
+                        if (title.isNotEmpty()) titles.add(title)
+                    }
+                }
+
+                val continueObj = json.getAsJsonObject("continue")
+                rccontinue = continueObj?.get("rccontinue")?.asString
+                if (rccontinue == null) break
+            }
+
+            Result.success(titles.toList())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 获取最近的日志事件（删除/移动/恢复），对标 WiGit get_recent_logs
+     * @param sinceTimestamp ISO8601 格式
+     * @param namespaces 只获取这些命名空间的日志
+     * @return 日志事件列表，每个元素是 (fromTitle, toTitle)，fromTitle 为 null 表示新增，toTitle 为 null 表示删除
+     */
+    suspend fun getRecentLogs(
+        sinceTimestamp: String,
+        namespaces: List<Int> = listOf(0, 2, 4, 6, 8, 10, 12, 14, 828)
+    ): Result<List<Pair<String?, String?>>> = withContext(Dispatchers.IO) {
+        try {
+            val result = mutableListOf<Pair<String?, String?>>()
+            val seenPages = mutableSetOf<String>()
+
+            // 获取三类日志：删除、移动、内容模型
+            for (logType in listOf("delete", "move", "contentmodel")) {
+                var lecontinue: String? = null
+                while (true) {
+                    var url = "${getApiUrl()}?action=query&list=logevents" +
+                        "&letype=$logType" +
+                        "&leend=${URLEncoder.encode(sinceTimestamp, "UTF-8")}" +
+                        "&ledir=older&lelimit=200&format=json"
+                    if (lecontinue != null) {
+                        url += "&lecontinue=${URLEncoder.encode(lecontinue, "UTF-8")}"
+                    }
+                    val req = Request.Builder().url(url).headers(getHeaders()).get().build()
+                    val resp = client.newCall(req).execute()
+                    val body = resp.body?.string() ?: break
+                    val json = JsonParser.parseString(body).asJsonObject
+
+                    val events = json.getAsJsonObject("query")?.getAsJsonArray("logevents")
+                    events?.forEach { element ->
+                        val obj = element.asJsonObject
+                        val ns = obj.get("ns")?.asInt ?: 0
+                        val action = obj.get("action")?.asString ?: ""
+                        val title = obj.get("title")?.asString
+                        val logPage = obj.get("logpage")?.asString ?: title
+
+                        if (logPage !in seenPages) {
+                            seenPages.add(logPage)
+                            when (logType) {
+                                "delete" -> {
+                                    if (action == "delete" && ns in namespaces) {
+                                        result.add(title to null)  // 删除
+                                    } else if (action == "restore" && ns in namespaces) {
+                                        result.add(null to title)  // 恢复
+                                    }
+                                }
+                                "move" -> {
+                                    val targetNs = obj.getAsJsonObject("params")?.get("target_ns")?.asInt ?: -1
+                                    val targetTitle = obj.getAsJsonObject("params")?.get("target_title")?.asString
+                                    val from = if (ns in namespaces) title else null
+                                    val to = if (targetNs in namespaces) targetTitle else null
+                                    if (from != null || to != null) {
+                                        result.add(from to to)
+                                    }
+                                }
+                                "contentmodel" -> {
+                                    if (ns in namespaces && title != null) {
+                                        result.add(title to title)  // 内容模型变更
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val continueObj = json.getAsJsonObject("continue")
+                    lecontinue = continueObj?.get("lecontinue")?.asString
+                    if (lecontinue == null) break
+                }
+            }
+
+            Result.success(result)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 获取页面的远程修订号（用于推送前冲突检查，对标 WiGit push_changes_to_origin 的冲突检测）
+     * @param title 页面标题
+     * @return 远程修订号，失败返回 null
+     */
+    suspend fun getRemoteRevisionId(title: String): Result<Long> = withContext(Dispatchers.IO) {
+        try {
+            val url = "${getApiUrl()}?action=query&titles=${
+                URLEncoder.encode(title, "UTF-8")
+            }&prop=revisions&rvprop=ids&format=json"
+            val req = Request.Builder().url(url).headers(getHeaders()).get().build()
+            val resp = client.newCall(req).execute()
+            val body = resp.body?.string() ?: return@withContext Result.failure(Exception("Empty"))
+            val json = JsonParser.parseString(body).asJsonObject
+            val pages = json.getAsJsonObject("query")?.getAsJsonObject("pages")
+            pages?.entrySet()?.firstOrNull()?.let { entry ->
+                val page = entry.value.asJsonObject
+                val revisions = page.getAsJsonArray("revisions")
+                if (revisions != null && revisions.size() > 0) {
+                    val revId = revisions[0].asJsonObject.get("revid")?.asLong ?: 0L
+                    return@withContext Result.success(revId)
+                }
+            }
+            Result.failure(Exception("No revision found"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 编辑页面并返回新的修订号（对标 WiGit page.edit + revision 追踪）
+     * @return Result<Long> 新修订号，失败返回异常
+     */
+    suspend fun editPageWithRevisionId(
+        title: String,
+        text: String,
+        summary: String = "自动编辑",
+        minor: Boolean = false
+    ): Result<Long> = withContext(Dispatchers.IO) {
+        try {
+            val csrfResult = getCsrfToken()
+            if (csrfResult.isFailure) return@withContext Result.failure(csrfResult.exceptionOrNull()!!)
+            val csrfToken = csrfResult.getOrThrow()
+
+            val form = buildForm(
+                "action" to "edit",
+                "format" to "json",
+                "title" to title,
+                "text" to text,
+                "summary" to summary,
+                "token" to csrfToken,
+                if (minor) "minor" to "1" else "notminor" to "1"
+            )
+
+            val req = Request.Builder()
+                .url(getApiUrl())
+                .headers(getHeaders())
+                .post(form.toRequestBody(formMediaType))
+                .build()
+            val resp = client.newCall(req).execute()
+            val body = resp.body?.string() ?: return@withContext Result.failure(Exception("Empty"))
+            val json = JsonParser.parseString(body).asJsonObject
+            val error = json.get("error")
+            if (error != null) {
+                val code = error.asJsonObject.get("code")?.asString ?: "unknown"
+                val info = error.asJsonObject.get("info")?.asString ?: ""
+                return@withContext Result.failure(Exception("API error: $code - $info"))
+            }
+            val edit = json.getAsJsonObject("edit")
+            val result = edit?.get("result")?.asString
+            if (result == "Success") {
+                val newRevId = edit.get("newrevid")?.asLong ?: 0L
+                Result.success(newRevId)
+            } else {
+                Result.failure(Exception("Edit failed: $result"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ============ 批量替换页面内容 ============
 
     suspend fun batchReplace(

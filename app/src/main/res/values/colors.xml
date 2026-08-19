@@ -1,22 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- M3 亮色主题色板 -->
     <color name="primary">#2E7D32</color>
-    <color name="primary_variant">#1B5E20</color>
     <color name="on_primary">#FFFFFF</color>
-    <color name="secondary">#558B2F</color>
-    <color name="secondary_variant">#33691E</color>
+    <color name="primary_container">#B7F3B0</color>
+    <color name="on_primary_container">#012B0B</color>
+    <color name="secondary">#3A5E4B</color>
     <color name="on_secondary">#FFFFFF</color>
-    <color name="background">#FAFAFA</color>
-    <color name="on_background">#212121</color>
+    <color name="secondary_container">#B9F0C8</color>
+    <color name="on_secondary_container">#07392A</color>
+    <color name="tertiary">#2E3F55</color>
+    <color name="on_tertiary">#FFFFFF</color>
+    <color name="tertiary_container">#C2E6FF</color>
+    <color name="on_tertiary_container">#152C44</color>
+    <color name="background">#FAFAF8</color>
+    <color name="on_background">#1B1D1A</color>
     <color name="surface">#FFFFFF</color>
-    <color name="on_surface">#212121</color>
-    <color name="error">#D32F2F</color>
+    <color name="on_surface">#1B1D1A</color>
+    <color name="surface_variant">#E5E8E3</color>
+    <color name="on_surface_variant">#414941</color>
+    <color name="outline">#71796F</color>
+    <color name="error">#BA1A1A</color>
     <color name="on_error">#FFFFFF</color>
     <color name="card_background">#FFFFFF</color>
     <color name="divider">#E0E0E0</color>
-    <color name="text_primary">#212121</color>
-    <color name="text_secondary">#757575</color>
-    <color name="accent_green">#4CAF50</color>
-    <color name="accent_orange">#FF9800</color>
-    <color name="error_color">#D32F2F</color>
+    <color name="text_primary">#1B1D1A</color>
+    <color name="text_secondary">#71796F</color>
+    <color name="accent_green">#2E9E44</color>
+    <color name="accent_orange">#E67E22</color>
+    <color name="error_color">#BA1A1A</color>
 </resources>

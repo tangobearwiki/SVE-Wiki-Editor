@@ -32,6 +32,7 @@ class SyncFragment : Fragment() {
     private lateinit var tvTotalSize: TextView
     private lateinit var tvLastSync: TextView
     private lateinit var btnPullAll: Button
+    private lateinit var btnSyncRecent: Button
     private lateinit var btnPushSelected: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var tvStatus: TextView
@@ -71,6 +72,7 @@ class SyncFragment : Fragment() {
         tvTotalSize = view.findViewById(R.id.tv_total_size)
         tvLastSync = view.findViewById(R.id.tv_last_sync)
         btnPullAll = view.findViewById(R.id.btn_pull_all)
+        btnSyncRecent = view.findViewById(R.id.btn_sync_recent)
         btnPushSelected = view.findViewById(R.id.btn_push_selected)
         progressBar = view.findViewById(R.id.progress_bar)
         tvStatus = view.findViewById(R.id.tv_status)
@@ -91,6 +93,7 @@ class SyncFragment : Fragment() {
         }
 
         btnPullAll.setOnClickListener { pullAll() }
+        btnSyncRecent.setOnClickListener { syncRecent() }
         btnPushSelected.setOnClickListener { pushSelected() }
         btnSearch.setOnClickListener { searchLocalPages() }
         btnDeletePages.setOnClickListener { showDeleteDialog() }
@@ -433,6 +436,68 @@ class SyncFragment : Fragment() {
         }
     }
 
+    /** 增量同步：只拉取自上次同步以来变更的页面 */
+    private fun syncRecent() {
+        val engine = syncEngine ?: run { tvStatus.text = "syncEngine 未初始化"; return }
+        val loginPrefs = prefs ?: run { tvStatus.text = "prefs 未初始化"; return }
+        if (!loginPrefs.isLoggedIn) {
+            tvStatus.text = "请先在「设置」中登录"
+            Toast.makeText(requireContext(), "请先登录", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        job = CoroutineScope(Dispatchers.Main).launch {
+            btnSyncRecent.isEnabled = false
+            btnPullAll.isEnabled = false
+            btnPushSelected.isEnabled = false
+            progressBar.visibility = View.VISIBLE
+            progressBar.isIndeterminate = true
+            tvStatus.text = "开始增量同步..."
+
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    engine.syncRecentChanges(
+                        onProgress = { _, done, total ->
+                            requireActivity().runOnUiThread {
+                                tvStatus.text = "增量同步：$done/$total 页"
+                                progressBar.isIndeterminate = false
+                                progressBar.max = total
+                                progressBar.progress = done
+                            }
+                        },
+                        onConflict = { title ->
+                            requireActivity().runOnUiThread {
+                                tvStatus.text = "⚠️ 本地有修改冲突：$title"
+                            }
+                        }
+                    )
+                }
+                withContext(Dispatchers.Main) {
+                    progressBar.visibility = View.GONE
+                    btnSyncRecent.isEnabled = true
+                    btnPullAll.isEnabled = true
+                    btnPushSelected.isEnabled = true
+                    refreshOverview()
+                    refreshModifiedList()
+                    refreshLocalPageList()
+                    tvStatus.text = result.message
+                    if (result.error != null) {
+                        Toast.makeText(requireContext(), "增量同步失败：${result.error}", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(requireContext(), result.message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                progressBar.visibility = View.GONE
+                btnSyncRecent.isEnabled = true
+                btnPullAll.isEnabled = true
+                btnPushSelected.isEnabled = true
+                tvStatus.text = "增量同步异常：${e.message}"
+                Log.e("SyncFragment", "增量同步异常", e)
+            }
+        }
+    }
+
     /** 推送选中的页面 */
     private fun pushSelected() {
         val engine = syncEngine ?: return
@@ -464,12 +529,13 @@ class SyncFragment : Fragment() {
                 engine.pushPages(
                     pagesToPush,
                     prefs?.defaultSummary ?: "SVE Wiki 编辑器自动推送",
+                    onPageProgress = { title, success ->
+                        requireActivity().runOnUiThread {
+                            tvStatus.text = if (success) "已推送：$title" else "失败：$title"
+                        }
+                    },
                     checkConflict = true
-                ) { title, success ->
-                    requireActivity().runOnUiThread {
-                        tvStatus.text = if (success) "已推送：$title" else "失败：$title"
-                    }
-                }
+                )
             }
 
             progressBar.visibility = View.GONE

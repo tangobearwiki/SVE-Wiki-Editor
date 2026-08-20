@@ -12,11 +12,13 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.*
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.svewiki.editor.MainActivity
 import com.svewiki.editor.R
 import com.svewiki.editor.api.SveWikiApi
 import com.svewiki.editor.data.LocalPage
 import com.svewiki.editor.data.LocalStorageManager
+import com.svewiki.editor.data.PageMeta
 import com.svewiki.editor.data.Preferences
 import com.svewiki.editor.data.WikiNamespaces
 import com.svewiki.editor.sync.SyncEngine
@@ -130,43 +132,50 @@ class SyncFragment : Fragment() {
 
     private fun refreshOverview() {
         val engine = syncEngine ?: return
-        val overview = engine.getOverview()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val overview = withContext(Dispatchers.IO) { engine.getOverview() }
 
-        tvTotalPages.text = overview.totalPages.toString()
-        tvModifiedCount.text = overview.modifiedCount.toString()
-        tvTotalSize.text = overview.totalSizeFormatted
+            tvTotalPages.text = overview.totalPages.toString()
+            tvModifiedCount.text = overview.modifiedCount.toString()
+            tvTotalSize.text = overview.totalSizeFormatted
 
-        tvLastSync.text = if (overview.lastSyncTime > 0) {
-            val date = Date(overview.lastSyncTime)
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-            "上次同步：${sdf.format(date)}"
-        } else {
-            "上次同步：从未"
+            tvLastSync.text = if (overview.lastSyncTime > 0) {
+                val date = Date(overview.lastSyncTime)
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                "上次同步：${sdf.format(date)}"
+            } else {
+                "上次同步：从未"
+            }
         }
     }
 
-    /** 刷新本地页面列表（默认主空间，按筛选器） */
+    /** 刷新本地页面列表（默认主空间，按筛选器），IO 线程加载轻量元数据 */
     private fun refreshLocalPageList() {
-        val allPages = storage?.loadAllPages()?.filter { it.namespace == currentNamespaceFilter }
-            ?.sortedByDescending {
-                // 已修改的按修改时间排，未修改的按同步时间排
-                if (it.lastModifiedTime > 0) it.lastModifiedTime else it.lastSyncTime
-            } ?: emptyList()
-        llFetchedPages.removeAllViews()
-        if (allPages.isEmpty()) {
-            val tv = TextView(requireContext())
-            tv.text = "当前空间暂无页面，点击「一键拉取全站」开始"
-            tv.textSize = 13f
-            tv.setTextColor(resources.getColor(R.color.text_secondary, null))
-            tv.setPadding(8, 16, 8, 16)
-            llFetchedPages.addView(tv)
-        } else {
-            allPages.forEach { page -> llFetchedPages.addView(createTimeRow(page)) }
+        val s = storage ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val metas = withContext(Dispatchers.IO) {
+                s.loadAllMetas().filter { it.namespace == currentNamespaceFilter }
+                    .sortedByDescending {
+                        // 已修改的按修改时间排，未修改的按同步时间排
+                        if (it.lastModifiedTime > 0) it.lastModifiedTime else it.lastSyncTime
+                    }
+            }
+            llFetchedPages.removeAllViews()
+            if (metas.isEmpty()) {
+                val tv = TextView(requireContext())
+                tv.text = "当前空间暂无页面，点击「一键拉取全站」开始"
+                tv.textSize = 13f
+                tv.setTextColor(resources.getColor(R.color.text_secondary, null))
+                tv.setPadding(8, 16, 8, 16)
+                llFetchedPages.addView(tv)
+            } else {
+                metas.forEach { meta -> llFetchedPages.addView(createMetaRow(meta)) }
+            }
         }
     }
 
-    /** 创建带时间信息的行（本地页面列表） */
-    private fun createTimeRow(page: LocalPage): View {
+    /** 创建带时间信息的行（本地页面列表，轻量文本行，不加载全量 LocalPage） */
+    private fun createMetaRow(meta: PageMeta): View {
         val row = LinearLayout(requireContext())
         row.orientation = LinearLayout.VERTICAL
         row.setPadding(12, 10, 12, 10)
@@ -180,13 +189,13 @@ class SyncFragment : Fragment() {
         titleRow.gravity = android.view.Gravity.CENTER_VERTICAL
 
         val icon = TextView(requireContext())
-        icon.text = if (page.isModified) "✏️ " else "📄 "
+        icon.text = if (meta.isModified) "✏️ " else "📄 "
         icon.textSize = 14f
 
         val nameTv = TextView(requireContext())
-        nameTv.text = page.title
+        nameTv.text = meta.title
         nameTv.textSize = 14f
-        nameTv.setTextColor(if (page.isModified) resources.getColor(R.color.accent_orange, null)
+        nameTv.setTextColor(if (meta.isModified) resources.getColor(R.color.accent_orange, null)
             else resources.getColor(R.color.text_primary, null))
         nameTv.maxLines = 1
         nameTv.ellipsize = android.text.TextUtils.TruncateAt.END
@@ -200,36 +209,42 @@ class SyncFragment : Fragment() {
         val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
 
         val syncTv = TextView(requireContext())
-        syncTv.text = "拉取:${if (page.lastSyncTime > 0) sdf.format(Date(page.lastSyncTime)) else "-"}"
+        syncTv.text = "拉取:${if (meta.lastSyncTime > 0) sdf.format(Date(meta.lastSyncTime)) else "-"}"
         syncTv.textSize = 10f
         syncTv.setTextColor(resources.getColor(R.color.text_secondary, null))
 
         val modTv = TextView(requireContext())
-        modTv.text = " 修改:${if (page.lastModifiedTime > 0) sdf.format(Date(page.lastModifiedTime)) else "-"}"
+        modTv.text = " 修改:${if (meta.lastModifiedTime > 0) sdf.format(Date(meta.lastModifiedTime)) else "-"}"
         modTv.textSize = 10f
-        modTv.setTextColor(if (page.isModified) resources.getColor(R.color.accent_orange, null)
+        modTv.setTextColor(if (meta.isModified) resources.getColor(R.color.accent_orange, null)
             else resources.getColor(R.color.text_secondary, null))
 
         timeRow.addView(syncTv)
         timeRow.addView(modTv)
 
-        // 只有已修改的页面才显示 Diff 按钮
-        if (page.isModified) {
+        // 只有已修改的页面才显示 Diff 按钮（点击时再加载全量页面）
+        if (meta.isModified) {
             val diffBtn = Button(requireContext())
             diffBtn.text = "Diff"
             diffBtn.textSize = 10f
             diffBtn.minHeight = 0
             diffBtn.minimumHeight = 0
             diffBtn.setPadding(8, 2, 8, 2)
-            diffBtn.setOnClickListener { showDiff(page) }
+            diffBtn.setOnClickListener {
+                val page = storage?.loadPage(meta.title, meta.namespace)
+                if (page != null) showDiff(page)
+            }
             timeRow.addView(diffBtn)
         }
 
         row.addView(titleRow)
         row.addView(timeRow)
 
-        // 点击打开编辑器
-        row.setOnClickListener { openPageInEditor(page) }
+        // 点击打开编辑器（加载全量页面）
+        row.setOnClickListener {
+            val page = storage?.loadPage(meta.title, meta.namespace)
+            if (page != null) openPageInEditor(page)
+        }
 
         // 分割线
         val divider = View(requireContext())
@@ -242,10 +257,11 @@ class SyncFragment : Fragment() {
     }
 
     private fun refreshModifiedList() {
-        val modifiedPages = storage?.loadModifiedPages() ?: emptyList()
-        tvModifiedSummary.text = "已修改页面：${modifiedPages.size} 个（已选 ${selectedPages.size}）"
+        val s = storage ?: return
+        tvModifiedSummary.text = "已修改页面：${s.loadModifiedMetas().size} 个（已选 ${selectedPages.size}）"
         llModifiedPages.removeAllViews()
-        if (modifiedPages.isEmpty()) {
+        val modifiedMetas = s.loadModifiedMetas()
+        if (modifiedMetas.isEmpty()) {
             val tv = TextView(requireContext())
             tv.text = "暂无已修改页面"
             tv.textSize = 13f
@@ -253,14 +269,14 @@ class SyncFragment : Fragment() {
             tv.setPadding(8, 8, 8, 8)
             llModifiedPages.addView(tv)
         } else {
-            modifiedPages.forEach { page ->
-                val row = createModifiedRow(page)
+            modifiedMetas.forEach { meta ->
+                val row = createModifiedRow(meta)
                 llModifiedPages.addView(row)
             }
         }
     }
 
-    private fun createModifiedRow(page: LocalPage): View {
+    private fun createModifiedRow(meta: PageMeta): View {
         val row = LinearLayout(requireContext())
         row.orientation = LinearLayout.HORIZONTAL
         row.setPadding(12, 12, 12, 12)
@@ -269,9 +285,9 @@ class SyncFragment : Fragment() {
             resources.getColor(R.color.surface, null))
 
         val cb = CheckBox(requireContext())
-        cb.isChecked = selectedPages.contains(pageKey(page))
+        cb.isChecked = selectedPages.contains(pageKey(meta.namespace, meta.title))
         cb.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) selectedPages.add(pageKey(page)) else selectedPages.remove(pageKey(page))
+            if (isChecked) selectedPages.add(pageKey(meta.namespace, meta.title)) else selectedPages.remove(pageKey(meta.namespace, meta.title))
             refreshModifiedList()
         }
 
@@ -280,7 +296,7 @@ class SyncFragment : Fragment() {
         icon.textSize = 14f
 
         val nameTv = TextView(requireContext())
-        nameTv.text = page.title
+        nameTv.text = meta.title
         nameTv.textSize = 13f
         nameTv.setTextColor(resources.getColor(R.color.accent_orange, null))
         nameTv.maxLines = 1
@@ -293,7 +309,10 @@ class SyncFragment : Fragment() {
         diffBtn.minHeight = 0
         diffBtn.minimumHeight = 0
         diffBtn.setPadding(8, 2, 8, 2)
-        diffBtn.setOnClickListener { showDiff(page) }
+        diffBtn.setOnClickListener {
+            val page = storage?.loadPage(meta.title, meta.namespace)
+            if (page != null) showDiff(page)
+        }
 
         row.addView(cb)
         row.addView(icon)
@@ -305,7 +324,7 @@ class SyncFragment : Fragment() {
     /** 查看 Diff（本地 vs 服务器最新） */
     private fun showDiff(page: LocalPage) {
         val apiRef = api ?: return
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             tvStatus.text = "获取服务器版本..."
             val serverResult = withContext(Dispatchers.IO) {
                 apiRef.fetchPageForDiff(page.title)
@@ -359,31 +378,52 @@ class SyncFragment : Fragment() {
         else -> 0
     }
 
-    /** 搜索本地页面（跨所有命名空间） */
+    /** 搜索本地页面（跨所有命名空间，IO 线程 + 轻量元数据） */
     private fun searchLocalPages() {
         val query = etSearch.text.toString().trim()
         if (query.isEmpty()) {
             Toast.makeText(requireContext(), "请输入搜索关键词", Toast.LENGTH_SHORT).show()
             return
         }
-        val allPages = storage?.loadAllPages() ?: emptyList()
-        val results = allPages.filter { it.title.contains(query, ignoreCase = true) }
-            .sortedByDescending { it.lastModifiedTime }
+        val s = storage ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val results = withContext(Dispatchers.IO) {
+                s.loadAllMetas().filter { it.title.contains(query, ignoreCase = true) }
+                    .sortedByDescending { it.lastModifiedTime }
+                    .map { meta -> s.loadPage(meta.title, meta.namespace) }
+                    .filterNotNull()
+            }
 
-        tvStatus.text = "搜索到 ${results.size} 个页面"
-        llFetchedPages.removeAllViews()
-        if (results.isEmpty()) {
-            val tv = TextView(requireContext())
-            tv.text = "未找到匹配「$query」的页面"
-            tv.textSize = 13f
-            tv.setTextColor(resources.getColor(R.color.text_secondary, null))
-            tv.setPadding(8, 16, 8, 16)
-            llFetchedPages.addView(tv)
-        } else {
-            results.forEach { page -> llFetchedPages.addView(createTimeRow(page)) }
-            Toast.makeText(requireContext(), "找到 ${results.size} 个页面", Toast.LENGTH_SHORT).show()
+            tvStatus.text = "搜索到 ${results.size} 个页面"
+            llFetchedPages.removeAllViews()
+            if (results.isEmpty()) {
+                val tv = TextView(requireContext())
+                tv.text = "未找到匹配「$query」的页面"
+                tv.textSize = 13f
+                tv.setTextColor(resources.getColor(R.color.text_secondary, null))
+                tv.setPadding(8, 16, 8, 16)
+                llFetchedPages.addView(tv)
+            } else {
+                // 搜索结果要求展示完整页面（含修改状态），用全量 LocalPage 行
+                results.forEach { page ->
+                    llFetchedPages.addView(createMetaRow(pageToMeta(page)))
+                }
+                Toast.makeText(requireContext(), "找到 ${results.size} 个页面", Toast.LENGTH_SHORT).show()
+            }
         }
     }
+
+    private fun pageToMeta(page: LocalPage): PageMeta = PageMeta(
+        title = page.title,
+        namespace = page.namespace,
+        pageId = page.pageId,
+        revisionId = page.revisionId,
+        lastSyncTime = page.lastSyncTime,
+        lastModifiedTime = page.lastModifiedTime,
+        isModified = page.isModified,
+        touched = page.touched,
+        sizeBytes = page.content.length.toLong()
+    )
 
     private fun pullAll() {
         val engine = syncEngine ?: run { tvStatus.text = "syncEngine 未初始化"; return }
@@ -394,7 +434,7 @@ class SyncFragment : Fragment() {
             return
         }
 
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             btnPullAll.isEnabled = false
             btnPushSelected.isEnabled = false
             progressBar.visibility = View.VISIBLE
@@ -406,7 +446,7 @@ class SyncFragment : Fragment() {
                     engine.pullAllPages(
                         overwriteLocal = prefs?.overwriteLocal ?: false,
                         onNamespaceProgress = { nsName, done, total ->
-                            requireActivity().runOnUiThread {
+                            lifecycleScope.launch {
                                 tvStatus.text = "拉取 $nsName：$done/$total 页"
                                 progressBar.isIndeterminate = false
                                 progressBar.max = total
@@ -446,7 +486,7 @@ class SyncFragment : Fragment() {
             return
         }
 
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             btnSyncRecent.isEnabled = false
             btnPullAll.isEnabled = false
             btnPushSelected.isEnabled = false
@@ -458,7 +498,7 @@ class SyncFragment : Fragment() {
                 val result = withContext(Dispatchers.IO) {
                     engine.syncRecentChanges(
                         onProgress = { _, done, total ->
-                            requireActivity().runOnUiThread {
+                            lifecycleScope.launch {
                                 tvStatus.text = "增量同步：$done/$total 页"
                                 progressBar.isIndeterminate = false
                                 progressBar.max = total
@@ -466,7 +506,7 @@ class SyncFragment : Fragment() {
                             }
                         },
                         onConflict = { title ->
-                            requireActivity().runOnUiThread {
+                            lifecycleScope.launch {
                                 tvStatus.text = "⚠️ 本地有修改冲突：$title"
                             }
                         }
@@ -518,7 +558,7 @@ class SyncFragment : Fragment() {
             return
         }
 
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             btnPushSelected.isEnabled = false
             btnPullAll.isEnabled = false
             progressBar.visibility = View.VISIBLE
@@ -530,7 +570,7 @@ class SyncFragment : Fragment() {
                     pagesToPush,
                     prefs?.defaultSummary ?: "SVE Wiki 编辑器自动推送",
                     onPageProgress = { title, success ->
-                        requireActivity().runOnUiThread {
+                        lifecycleScope.launch {
                             tvStatus.text = if (success) "已推送：$title" else "失败：$title"
                         }
                     },
@@ -634,7 +674,7 @@ class SyncFragment : Fragment() {
     /** 执行批量删除 */
     private fun executeDelete(pages: List<LocalPage>, mode: Int) {
         val engine = syncEngine ?: return
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             btnDeletePages.isEnabled = false
             btnPullAll.isEnabled = false
             btnPushSelected.isEnabled = false
@@ -649,7 +689,7 @@ class SyncFragment : Fragment() {
                     reason = prefs?.defaultSummary ?: "批量删除",
                     deleteMode = mode
                 ) { title, success ->
-                    requireActivity().runOnUiThread {
+                    lifecycleScope.launch {
                         tvStatus.text = if (success) "已删除：$title" else "失败：$title"
                     }
                 }

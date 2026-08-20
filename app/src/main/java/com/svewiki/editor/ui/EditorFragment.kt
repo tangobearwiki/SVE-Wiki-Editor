@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.svewiki.editor.MainActivity
 import com.svewiki.editor.R
 import com.svewiki.editor.api.SveWikiApi
@@ -155,7 +156,7 @@ class EditorFragment : Fragment() {
 
                 // 高亮延迟
                 highlightJob?.cancel()
-                highlightJob = CoroutineScope(Dispatchers.Main).launch {
+                highlightJob = viewLifecycleOwner.lifecycleScope.launch {
                     delay(500)
                     if (highlightEnabled) applyHighlight()
                 }
@@ -195,7 +196,7 @@ class EditorFragment : Fragment() {
         currentNamespace = detectNamespace(title)
 
         api?.let { api ->
-            job = CoroutineScope(Dispatchers.Main).launch {
+            job = viewLifecycleOwner.lifecycleScope.launch {
                 progressBar.visibility = View.VISIBLE
                 tvStatus.text = "读取中..."
                 withContext(Dispatchers.IO) {
@@ -237,7 +238,7 @@ class EditorFragment : Fragment() {
         storage?.markModified(title, currentNamespace, content)
 
         api?.let { api ->
-            job = CoroutineScope(Dispatchers.Main).launch {
+            job = viewLifecycleOwner.lifecycleScope.launch {
                 progressBar.visibility = View.VISIBLE
                 tvStatus.text = "推送中..."
                 withContext(Dispatchers.IO) {
@@ -272,7 +273,7 @@ class EditorFragment : Fragment() {
         val titleRef = title.ifEmpty { etTitle.text.toString().trim() }
         if (titleRef.isEmpty()) return
 
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             tvServerWarning.visibility = View.GONE
             val result = withContext(Dispatchers.IO) {
                 apiRef.fetchPageForDiff(titleRef)
@@ -427,7 +428,7 @@ class EditorFragment : Fragment() {
         val autoSaveEnabled = prefs?.autoSaveDraft ?: false
         if (!autoSaveEnabled) return
 
-        autoSaveJob = CoroutineScope(Dispatchers.IO).launch {
+        autoSaveJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(30_000) // 每 30 秒
                 val title = etTitle?.text?.toString()?.trim()

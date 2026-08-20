@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.svewiki.editor.MainActivity
 import com.svewiki.editor.R
 import com.svewiki.editor.api.SveWikiApi
@@ -281,7 +282,7 @@ class ManageFragment : Fragment() {
                     return@setPositiveButton
                 }
                 val engine = syncEngine ?: return@setPositiveButton
-                job = CoroutineScope(Dispatchers.Main).launch {
+                job = viewLifecycleOwner.lifecycleScope.launch {
                     setButtonsEnabled(false)
                     progressBar.visibility = View.VISIBLE
                     tvStatus.text = "删除中..."
@@ -290,7 +291,7 @@ class ManageFragment : Fragment() {
                             pages = pagesToDelete.map { it.title to it.namespace },
                             deleteMode = deleteMode
                         ) { title, success ->
-                            requireActivity().runOnUiThread { tvStatus.text = if (success) "已删除：$title" else "失败：$title" }
+                            lifecycleScope.launch { tvStatus.text = if (success) "已删除：$title" else "失败：$title" }
                         }
                     }
                     progressBar.visibility = View.GONE
@@ -320,7 +321,7 @@ class ManageFragment : Fragment() {
             .setTitle("确认移动")
             .setMessage("将「$from」移动到「$to」\n原因：$reason")
             .setPositiveButton("确认移动") { _, _ ->
-                job = CoroutineScope(Dispatchers.Main).launch {
+                job = viewLifecycleOwner.lifecycleScope.launch {
                     setButtonsEnabled(false)
                     progressBar.visibility = View.VISIBLE
                     tvStatus.text = "移动中..."
@@ -442,13 +443,13 @@ class ManageFragment : Fragment() {
             .setTitle("确认替换")
             .setMessage("查找「$find」→ 替换为「$replace」\n共 ${pages.size} 个页面")
             .setPositiveButton("确认替换") { _, _ ->
-                job = CoroutineScope(Dispatchers.Main).launch {
+                job = viewLifecycleOwner.lifecycleScope.launch {
                     setButtonsEnabled(false)
                     progressBar.visibility = View.VISIBLE
                     tvStatus.text = "替换中..."
                     val result = withContext(Dispatchers.IO) {
                         api?.batchReplace(listOf(rule), pages, summary) { title, success ->
-                            requireActivity().runOnUiThread { tvStatus.text = if (success) "已替换：$title" else "失败：$title" }
+                            lifecycleScope.launch { tvStatus.text = if (success) "已替换：$title" else "失败：$title" }
                         }
                     }
                     progressBar.visibility = View.GONE

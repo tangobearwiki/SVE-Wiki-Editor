@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.card.MaterialCardView
 import com.svewiki.editor.R
 import com.svewiki.editor.api.SveWikiApi
@@ -103,7 +104,7 @@ class SettingsFragment : Fragment() {
             return
         }
 
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             tvLoginStatus.text = "登录中..."
             btnLogin.isEnabled = false
 
@@ -129,7 +130,7 @@ class SettingsFragment : Fragment() {
     }
 
     private fun fetchUserInfo(username: String) {
-        job = CoroutineScope(Dispatchers.Main).launch {
+        job = viewLifecycleOwner.lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 api?.getCurrentUserInfo()
             }

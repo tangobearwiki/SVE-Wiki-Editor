@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationView
@@ -136,17 +137,17 @@ class MainActivity : AppCompatActivity() {
         editorFragment?.openLocalPage(page.title, page.namespace, page.content, page.revisionId)
     }
 
-    /** 自动登录（异步，不阻塞 UI） */
+    /** 自动登录（异步，不阻塞 UI，绑定 Activity 生命周期） */
     private fun autoLogin() {
         // 仅当本地有登录标记且账号密码非空时才尝试自动登录
         if (prefs.isLoggedIn && prefs.username.isNotEmpty() && prefs.password.isNotEmpty()) {
-            CoroutineScope(Dispatchers.IO).launch {
-                val result = api.login(prefs.username, prefs.password)
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    api.login(prefs.username, prefs.password)
+                }
                 if (result.isFailure) {
-                    withContext(Dispatchers.Main) {
-                        // 登录失败：清除登录标记，避免"假登录"导致推送/删除静默失败
-                        prefs.isLoggedIn = false
-                    }
+                    // 登录失败：清除登录标记，避免"假登录"导致推送/删除静默失败
+                    prefs.isLoggedIn = false
                 }
             }
         }

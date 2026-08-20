@@ -94,6 +94,24 @@ data class LocalPage(
 )
 
 /**
+ * 页面轻量元数据（不含 content）
+ * 用于列表展示和统计，避免全量加载页面内容导致卡顿和内存占用
+ */
+data class PageMeta(
+    val title: String,
+    val namespace: Int = 0,
+    val pageId: Long = 0,
+    val revisionId: Long = 0,
+    val lastSyncTime: Long = 0,
+    val lastModifiedTime: Long = 0,
+    val isModified: Boolean = false,
+    val touched: String = "",
+    val sizeBytes: Long = 0
+) {
+    val key: String get() = "$namespace:$title"
+}
+
+/**
  * 同步状态
  */
 enum class SyncStatus {

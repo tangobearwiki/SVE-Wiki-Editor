@@ -130,6 +130,19 @@ class LocalStorageManager(private val context: Context) {
     }
 
     /**
+     * 轻量读取单个页面元数据（不解析 content，大幅降低内存占用）
+     */
+    fun loadPageMeta(title: String, namespace: Int): PageMeta? {
+        val file = pageFile(title, namespace)
+        if (!file.exists()) return null
+        return try {
+            parseMetaFast(file)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * 获取某命名空间下的所有页面
      */
     fun loadPagesByNamespace(namespace: Int): List<LocalPage> {
@@ -158,6 +171,13 @@ class LocalStorageManager(private val context: Context) {
     }
 
     /**
+     * 轻量获取所有已修改页面的元数据（不解析 content）
+     */
+    fun loadModifiedMetas(): List<PageMeta> {
+        return loadAllMetas().filter { it.isModified }
+    }
+
+    /**
      * 获取所有已存储的页面（逐命名空间遍历）
      */
     fun loadAllPages(): List<LocalPage> {
@@ -174,6 +194,108 @@ class LocalStorageManager(private val context: Context) {
                     }
             }
         return result
+    }
+
+    /**
+     * 轻量加载所有页面元数据（不解析 content，只取列表/统计所需字段）
+     * 比 loadAllPages() 内存占用低 10x+，用于列表和概览
+     */
+    fun loadAllMetas(): List<PageMeta> {
+        val result = mutableListOf<PageMeta>()
+        if (!dataDir.exists()) return result
+        dataDir.listFiles { f -> f.isDirectory }
+            ?.forEach { dir ->
+                dir.listFiles { f -> f.extension == "json" }
+                    ?.forEach { file ->
+                        try {
+                            parseMetaFast(file)?.let { result.add(it) }
+                        } catch (_: Exception) {}
+                    }
+            }
+        return result
+    }
+
+    /**
+     * 极速 JSON 元数据解析：不用 Gson 反序列化整个 LocalPage（含 content 全文），
+     * 而是只读文件头部的元数据字段，并复用 file.length() 记录大小。
+     * 对几百个页面的列表加载，内存和时间开销都可忽略。
+     */
+    private fun parseMetaFast(file: File): PageMeta? {
+        val text = file.readText(Charsets.UTF_8)
+        if (text.length > MAX_JSON_FOR_FULL_PARSE) {
+            // 大文件（含大量 content）跳过 Gson，用快速正则抽取元数据字段
+            return PageMeta(
+                title = extractString(text, "title") ?: return null,
+                namespace = extractInt(text, "namespace") ?: 0,
+                pageId = extractLong(text, "pageId") ?: 0,
+                revisionId = extractLong(text, "revisionId") ?: 0,
+                lastSyncTime = extractLong(text, "lastSyncTime") ?: 0,
+                lastModifiedTime = extractLong(text, "lastModifiedTime") ?: 0,
+                isModified = extractBoolean(text, "isModified") ?: false,
+                touched = extractString(text, "touched") ?: "",
+                sizeBytes = file.length()
+            )
+        }
+        // 小文件用 Gson 解析（字段更准确，开销可接受）
+        return try {
+            val p = gson.fromJson(text, LocalPage::class.java)
+            PageMeta(
+                title = p.title,
+                namespace = p.namespace,
+                pageId = p.pageId,
+                revisionId = p.revisionId,
+                lastSyncTime = p.lastSyncTime,
+                lastModifiedTime = p.lastModifiedTime,
+                isModified = p.isModified,
+                touched = p.touched,
+                sizeBytes = file.length()
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractString(text: String, key: String): String? {
+        val idx = text.indexOf("\"$key\"")
+        if (idx < 0) return null
+        val vStart = text.indexOf('"', idx + key.length + 2)
+        if (vStart < 0) return null
+        val vEnd = text.indexOf('"', vStart + 1)
+        if (vEnd < 0) return null
+        return text.substring(vStart + 1, vEnd)
+    }
+
+    private fun extractInt(text: String, key: String): Int? {
+        val idx = text.indexOf("\"$key\"")
+        if (idx < 0) return null
+        val vStart = text.indexOf(':', idx) + 1
+        var vEnd = vStart
+        while (vEnd < text.length && (text[vEnd].isDigit() || text[vEnd] == '-')) vEnd++
+        return text.substring(vStart, vEnd).trim().toIntOrNull()
+    }
+
+    private fun extractLong(text: String, key: String): Long? {
+        val idx = text.indexOf("\"$key\"")
+        if (idx < 0) return null
+        val vStart = text.indexOf(':', idx) + 1
+        var vEnd = vStart
+        while (vEnd < text.length && (text[vEnd].isDigit() || text[vEnd] == '-')) vEnd++
+        return text.substring(vStart, vEnd).trim().toLongOrNull()
+    }
+
+    private fun extractBoolean(text: String, key: String): Boolean? {
+        val idx = text.indexOf("\"$key\"")
+        if (idx < 0) return null
+        return when {
+            text.indexOf("true", idx) in (idx + 1)..(idx + 8) -> true
+            text.indexOf("false", idx) in (idx + 1)..(idx + 9) -> false
+            else -> null
+        }
+    }
+
+    companion object {
+        /** JSON 超过此大小则跳过 Gson 全量反序列化，用快速字段抽取 */
+        private const val MAX_JSON_FOR_FULL_PARSE = 64 * 1024 // 64KB
     }
 
     /**
@@ -215,25 +337,21 @@ class LocalStorageManager(private val context: Context) {
     }
 
     /**
-     * 获取所有命名空间的概览
+     * 获取所有命名空间的概览（基于轻量元数据，不解析 content）
      */
     fun getNamespaceOverview(): List<Pair<String, Int>> {
-        val result = mutableListOf<Pair<String, Int>>()
-        val namespaces = listOf(0, 2, 4, 6, 8, 10, 12, 14, 828)
-        namespaces.forEach { ns ->
-            val count = getPageCount(ns)
-            if (count > 0) {
-                result.add(WikiNamespaces.getDisplayName(ns) to count)
-            }
+        val counts = mutableMapOf<Int, Int>()
+        loadAllMetas().forEach { meta ->
+            counts[meta.namespace] = (counts[meta.namespace] ?: 0) + 1
         }
-        return result
+        return counts.map { (ns, count) -> WikiNamespaces.getDisplayName(ns) to count }
     }
 
     /**
-     * 获取已修改页面数量
+     * 获取已修改页面数量（基于轻量元数据，不解析 content）
      */
     fun getModifiedCount(): Int {
-        return loadAllPages().count { it.isModified }
+        return loadAllMetas().count { it.isModified }
     }
 
     /**

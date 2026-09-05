@@ -89,6 +89,20 @@ class LocalStorageManager(private val context: Context) {
 
     private fun metadataFile(): File = File(dataDir, "metadata.json")
 
+    private fun writeAtomically(file: File, content: String) {
+        file.parentFile?.mkdirs()
+        val temporaryFile = File(file.parentFile, "${file.name}.tmp")
+        temporaryFile.writeText(content, Charsets.UTF_8)
+        if (!temporaryFile.renameTo(file)) {
+            if (file.exists() && !file.delete()) {
+                throw java.io.IOException("Unable to replace ${file.name}")
+            }
+            if (!temporaryFile.renameTo(file)) {
+                throw java.io.IOException("Unable to write ${file.name}")
+            }
+        }
+    }
+
     /**
      * 初始化存储目录
      */
@@ -106,7 +120,7 @@ class LocalStorageManager(private val context: Context) {
 
         val file = pageFile(page.title, page.namespace)
         val json = gson.toJson(page)
-        file.writeText(json, Charsets.UTF_8)
+        writeAtomically(file, json)
     }
 
     /**
@@ -371,7 +385,7 @@ class LocalStorageManager(private val context: Context) {
      * 保存同步元数据
      */
     fun saveMetadata(metadata: SyncMetadata) {
-        metadataFile().writeText(gson.toJson(metadata), Charsets.UTF_8)
+        writeAtomically(metadataFile(), gson.toJson(metadata))
     }
 
     // ============ 修订版本追踪 ============
@@ -396,7 +410,7 @@ class LocalStorageManager(private val context: Context) {
      * 保存修订版本追踪数据
      */
     fun saveRevisionTracker(tracker: RevisionTracker) {
-        revisionFile().writeText(gson.toJson(tracker), Charsets.UTF_8)
+        writeAtomically(revisionFile(), gson.toJson(tracker))
     }
 
     /**

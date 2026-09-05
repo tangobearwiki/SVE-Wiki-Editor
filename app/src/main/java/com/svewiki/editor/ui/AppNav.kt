@@ -50,7 +50,7 @@ fun AppNav(
     syncEngine: SyncEngine? = null,
     onPageOpen: (String, Int, String, Long) -> Unit = { _, _, _, _ -> }
 ) {
-    val currentTab by AppState.currentTab
+    val currentTab = AppState.currentTab
 
     Scaffold(
         bottomBar = {
@@ -81,6 +81,7 @@ fun AppNav(
                 api = api,
                 storage = storage,
                 prefs = prefs,
+                syncEngine = syncEngine,
                 onPageOpen = onPageOpen
             )
             NavTab.SYNC -> SyncScreen(

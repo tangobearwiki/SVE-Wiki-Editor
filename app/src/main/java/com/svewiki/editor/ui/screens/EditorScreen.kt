@@ -40,8 +40,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.svewiki.editor.api.SveWikiApi
+import com.svewiki.editor.data.LocalPage
 import com.svewiki.editor.data.LocalStorageManager
 import com.svewiki.editor.data.Preferences
+import com.svewiki.editor.sync.SyncEngine
 import com.svewiki.editor.ui.components.SectionTitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,6 +55,7 @@ fun EditorScreen(
     api: SveWikiApi? = null,
     storage: LocalStorageManager? = null,
     prefs: Preferences? = null,
+    syncEngine: SyncEngine? = null,
     onPageOpen: (String, Int, String, Long) -> Unit = { _, _, _, _ -> }
 ) {
     var title by remember { mutableStateOf("") }
@@ -108,7 +111,13 @@ fun EditorScreen(
         ) {
             BasicTextField(
                 value = content,
-                onValueChange = { content = it },
+                onValueChange = {
+                    if (it != content) {
+                        undoStack.addLast(content)
+                        redoStack.clear()
+                    }
+                    content = it
+                },
                 textStyle = TextStyle(
                     fontSize = 14.sp,
                     fontFamily = FontFamily.Monospace,
@@ -171,17 +180,35 @@ fun EditorScreen(
                     if (title.isBlank()) { status = "请输入标题"; return@Button }
                     isWorking = true
                     status = "推送中..."
-                    val apiRef = api ?: return@Button
+                    val engine = syncEngine
+                    if (engine == null) {
+                        isWorking = false
+                        status = "❌ 同步服务不可用"
+                        return@Button
+                    }
                     scope.launch {
+                        val pageTitle = title.trim()
+                        val namespace = detectNamespace(pageTitle)
+                        val page = storage?.loadPage(pageTitle, namespace)?.copy(
+                            content = content,
+                            isModified = true
+                        ) ?: LocalPage(
+                            title = pageTitle,
+                            namespace = namespace,
+                            content = content,
+                            isModified = true
+                        )
                         val result = withContext(Dispatchers.IO) {
-                            apiRef.editPage(title.trim(), content, summary.ifBlank { "自动编辑" })
+                            engine.pushPages(
+                                pages = listOf(page),
+                                summary = summary.ifBlank { "自动编辑" }
+                            )
                         }
                         isWorking = false
-                        if (result.isSuccess) {
-                            storage?.markPushed(title.trim(), detectNamespace(title))
-                            status = "✅ 推送成功：$title"
+                        if (result.success.contains(pageTitle)) {
+                            status = "✅ 推送成功：$pageTitle"
                         } else {
-                            status = "❌ 推送失败：${result.exceptionOrNull()?.message ?: "未知"}"
+                            status = "❌ 推送失败：${result.failed.firstOrNull()?.second ?: "未知"}"
                         }
                     }
                 },

@@ -41,6 +41,7 @@ class SyncEngine(
 
         var totalProcessed = 0
         var totalPages = 0
+        val tracker = storage.getRevisionTracker()
 
         // 2. 逐命名空间拉取
         for (ns in targetNamespaces) {
@@ -90,6 +91,7 @@ class SyncEngine(
                     } else {
                         storage.savePage(page)
                     }
+                    tracker.update(page.title, page.revisionId)
                 }
                 totalProcessed += pages.size
                 _progress.value = _progress.value.copy(
@@ -113,6 +115,9 @@ class SyncEngine(
             lastSyncTime = System.currentTimeMillis(),
             totalPages = totalProcessed
         ))
+        tracker.lastUpdateTime = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+            .format(java.util.Date())
+        storage.saveRevisionTracker(tracker)
         storage.appendLog("全站拉取", "完成，共 $totalProcessed 页")
 
         _progress.value = SyncProgress(

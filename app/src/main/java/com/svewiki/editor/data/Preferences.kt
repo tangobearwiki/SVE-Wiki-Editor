@@ -2,10 +2,29 @@ package com.svewiki.editor.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 class Preferences(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("svewiki_prefs", Context.MODE_PRIVATE)
+    private val securePrefs: SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "svewiki_secure_prefs",
+        MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    init {
+        val legacyPassword = prefs.getString("password", "") ?: ""
+        if (securePrefs.getString("password", "").isNullOrEmpty() && legacyPassword.isNotEmpty()) {
+            securePrefs.edit().putString("password", legacyPassword).apply()
+            prefs.edit().remove("password").apply()
+        }
+    }
 
     val baseUrl: String
         get() = prefs.getString("base_url", "https://sve.p1.wiki") ?: "https://sve.p1.wiki"
@@ -15,8 +34,8 @@ class Preferences(context: Context) {
         set(value) = prefs.edit().putString("username", value).apply()
 
     var password: String
-        get() = prefs.getString("password", "") ?: ""
-        set(value) = prefs.edit().putString("password", value).apply()
+        get() = securePrefs.getString("password", "") ?: ""
+        set(value) = securePrefs.edit().putString("password", value).apply()
 
     var isLoggedIn: Boolean
         get() = prefs.getBoolean("is_logged_in", false)
@@ -50,6 +69,7 @@ class Preferences(context: Context) {
         set(value) = prefs.edit().putBoolean("dark_mode", value).apply()
 
     fun clearLogin() {
-        prefs.edit().putBoolean("is_logged_in", false).apply()
+        prefs.edit().putBoolean("is_logged_in", false).remove("password").apply()
+        securePrefs.edit().remove("password").apply()
     }
 }

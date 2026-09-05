@@ -24,27 +24,18 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
-      - name: Install aapt2 to /usr/bin
+      - name: Install Android 16 SDK packages
         run: |
-          AAPT2_PATH=$(find "$ANDROID_HOME/build-tools/36.0.0" -name "aapt2" -type f 2>/dev/null | head -1)
-          if [ -n "$AAPT2_PATH" ]; then
-            sudo cp "$AAPT2_PATH" /usr/bin/aapt2
-            sudo chmod +x /usr/bin/aapt2
-            echo "aapt2 installed from $AAPT2_PATH"
-          else
-            echo "aapt2 not found in build-tools;android-36"
-            exit 1
-          fi
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Write local.properties
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
 
       - name: Build Android 16 Debug APK
         run: ./gradlew assembleDebug --no-daemon

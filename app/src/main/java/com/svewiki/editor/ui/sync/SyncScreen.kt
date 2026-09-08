@@ -1,4 +1,4 @@
-package com.svewiki.editor.ui.screens
+package com.svewiki.editor.ui.sync
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,28 +17,18 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.svewiki.editor.data.LocalStorageManager
-import com.svewiki.editor.data.Preferences
-import com.svewiki.editor.sync.SyncEngine
-import com.svewiki.editor.sync.SyncOverview
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.svewiki.editor.ui.AppViewModelFactory
 import com.svewiki.editor.ui.components.SectionTitle
 import com.svewiki.editor.ui.components.StatCard
 import com.svewiki.editor.ui.theme.SunGold
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -46,21 +36,9 @@ import java.util.Locale
 @Composable
 fun SyncScreen(
     modifier: Modifier = Modifier,
-    syncEngine: SyncEngine? = null,
-    storage: LocalStorageManager? = null,
-    prefs: Preferences? = null,
-    onPageOpen: (String, Int, String, Long) -> Unit = { _, _, _, _ -> }
+    viewModel: SyncViewModel = viewModel(factory = AppViewModelFactory)
 ) {
-    var overview by remember { mutableStateOf<SyncOverview?>(null) }
-    var isWorking by remember { mutableStateOf(false) }
-    var statusText by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-
-    // 初次加载概览
-    LaunchedEffect(Unit) {
-        val engine = syncEngine ?: return@LaunchedEffect
-        overview = withContext(Dispatchers.IO) { engine.getOverview() }
-    }
+    val ui by viewModel.uiState.collectAsState()
 
     Column(
         modifier = modifier
@@ -71,43 +49,41 @@ fun SyncScreen(
         SectionTitle("同步中心")
         Spacer(Modifier.height(16.dp))
 
-        // 概览统计卡片
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             StatCard(
-                value = overview?.totalPages?.toString() ?: "-",
+                value = ui.overview?.totalPages?.toString() ?: "-",
                 label = "本地页面",
                 modifier = Modifier.weight(1f)
             )
             StatCard(
-                value = overview?.modifiedCount?.toString() ?: "-",
+                value = ui.overview?.modifiedCount?.toString() ?: "-",
                 label = "待推送",
                 modifier = Modifier.weight(1f),
                 valueColor = SunGold
             )
             StatCard(
-                value = overview?.totalSizeFormatted ?: "-",
+                value = ui.overview?.totalSizeFormatted ?: "-",
                 label = "占用空间",
                 modifier = Modifier.weight(1f),
                 valueColor = MaterialTheme.colorScheme.tertiary
             )
         }
-
         Spacer(Modifier.height(8.dp))
+
         Text(
-            text = "上次同步：${overview?.lastSyncTime?.let { t ->
-                if (t > 0) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(t)) else "从未"
+            text = "上次同步：${ui.overview?.lastSyncTime?.let { t ->
+                if (t > 0) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(t))
+                else "从未"
             } ?: "从未"}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp)
         )
-
         Spacer(Modifier.height(24.dp))
 
-        // 操作区
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -120,54 +96,19 @@ fun SyncScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(12.dp))
-
                 Button(
-                    onClick = {
-                        isWorking = true
-                        statusText = "拉取全站中..."
-                        val engine = syncEngine ?: return@Button
-                        scope.launch {
-                            engine.pullAllPages(
-                                overwriteLocal = prefs?.overwriteLocal ?: false
-                            ) { ns, done, total ->
-                                statusText = "拉取 $ns：$done/$total"
-                            }
-                            overview = withContext(Dispatchers.IO) { engine.getOverview() }
-                            isWorking = false
-                            statusText = "全站拉取完成"
-                        }
-                    },
-                    enabled = !isWorking && syncEngine != null,
+                    onClick = viewModel::pullAll,
+                    enabled = !ui.isWorking,
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("一键拉取全站")
-                }
-
+                ) { Text("一键拉取全站") }
                 Spacer(Modifier.height(8.dp))
-
                 OutlinedButton(
-                    onClick = {
-                        isWorking = true
-                        statusText = "增量同步中..."
-                        val engine = syncEngine ?: return@OutlinedButton
-                        scope.launch {
-                            val result = engine.syncRecentChanges(
-                                onProgress = { _, done, total ->
-                                    statusText = "增量同步：$done/$total"
-                                }
-                            )
-                            overview = withContext(Dispatchers.IO) { engine.getOverview() }
-                            isWorking = false
-                            statusText = result.message
-                        }
-                    },
-                    enabled = !isWorking && syncEngine != null,
+                    onClick = viewModel::syncRecent,
+                    enabled = !ui.isWorking,
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("增量同步")
-                }
+                ) { Text("增量同步") }
 
-                if (isWorking) {
+                if (ui.isWorking) {
                     Spacer(Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
@@ -176,7 +117,7 @@ fun SyncScreen(
                         )
                         Spacer(Modifier.padding(start = 8.dp))
                         Text(
-                            text = statusText,
+                            text = ui.statusText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

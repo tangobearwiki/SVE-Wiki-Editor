@@ -17,20 +17,16 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.svewiki.editor.api.SveWikiApi
-import com.svewiki.editor.data.LocalStorageManager
-import com.svewiki.editor.data.Preferences
-import com.svewiki.editor.sync.SyncEngine
-import com.svewiki.editor.ui.screens.EditorScreen
-import com.svewiki.editor.ui.screens.ManageScreen
-import com.svewiki.editor.ui.screens.SettingsScreen
-import com.svewiki.editor.ui.screens.SyncScreen
+import com.svewiki.editor.ui.editor.EditorScreen
+import com.svewiki.editor.ui.manage.ManageScreen
+import com.svewiki.editor.ui.settings.SettingsScreen
+import com.svewiki.editor.ui.sync.SyncScreen
 
-// 底部导航项定义：清晰分类，不超 5 项
 enum class NavTab(
     val label: String,
     val selectedIcon: ImageVector,
@@ -42,15 +38,14 @@ enum class NavTab(
     SETTINGS("设置", Icons.Filled.Settings, Icons.Outlined.Settings)
 }
 
+/**
+ * 应用主导航。
+ * 各屏幕通过各自的 ViewModel 获取依赖（见 [AppViewModelFactory]），
+ * 不再从导航层透传 api/storage/prefs/syncEngine。
+ */
 @Composable
-fun AppNav(
-    api: SveWikiApi? = null,
-    storage: LocalStorageManager? = null,
-    prefs: Preferences? = null,
-    syncEngine: SyncEngine? = null,
-    onPageOpen: (String, Int, String, Long) -> Unit = { _, _, _, _ -> }
-) {
-    val currentTab = AppState.currentTab
+fun AppNav() {
+    val currentTab by AppNavigator.currentTab.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -61,7 +56,7 @@ fun AppNav(
                 NavTab.entries.forEachIndexed { index, tab ->
                     NavigationBarItem(
                         selected = currentTab == index,
-                        onClick = { AppState.currentTab = index },
+                        onClick = { AppNavigator.selectTab(index) },
                         icon = {
                             Icon(
                                 imageVector = if (currentTab == index) tab.selectedIcon else tab.unselectedIcon,
@@ -76,30 +71,10 @@ fun AppNav(
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
         when (NavTab.entries[currentTab]) {
-            NavTab.EDITOR -> EditorScreen(
-                modifier = contentModifier,
-                api = api,
-                storage = storage,
-                prefs = prefs,
-                syncEngine = syncEngine,
-                onPageOpen = onPageOpen
-            )
-            NavTab.SYNC -> SyncScreen(
-                modifier = contentModifier,
-                syncEngine = syncEngine,
-                storage = storage,
-                prefs = prefs,
-                onPageOpen = onPageOpen
-            )
-            NavTab.MANAGE -> ManageScreen(
-                modifier = contentModifier,
-                storage = storage
-            )
-            NavTab.SETTINGS -> SettingsScreen(
-                modifier = contentModifier,
-                prefs = prefs,
-                api = api
-            )
+            NavTab.EDITOR -> EditorScreen(modifier = contentModifier)
+            NavTab.SYNC -> SyncScreen(modifier = contentModifier)
+            NavTab.MANAGE -> ManageScreen(modifier = contentModifier)
+            NavTab.SETTINGS -> SettingsScreen(modifier = contentModifier)
         }
     }
 }

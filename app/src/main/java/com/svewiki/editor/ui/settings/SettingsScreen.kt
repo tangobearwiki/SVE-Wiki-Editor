@@ -1,4 +1,4 @@
-package com.svewiki.editor.ui.screens
+package com.svewiki.editor.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -19,43 +18,22 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.svewiki.editor.api.SveWikiApi
-import com.svewiki.editor.data.Preferences
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.svewiki.editor.ui.AppViewModelFactory
 import com.svewiki.editor.ui.components.SectionTitle
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    prefs: Preferences? = null,
-    api: SveWikiApi? = null,
-    onLoginStateChange: (() -> Unit)? = null
+    viewModel: SettingsViewModel = viewModel(factory = AppViewModelFactory)
 ) {
-    var username by remember { mutableStateOf(prefs?.username ?: "") }
-    var password by remember { mutableStateOf(prefs?.password ?: "") }
-    var isLoggedIn by remember { mutableStateOf(prefs?.isLoggedIn ?: false) }
-    var loginStatus by remember { mutableStateOf("") }
-    var isLoggingIn by remember { mutableStateOf(false) }
-
-    // 设置项
-    var autoSaveDraft by remember { mutableStateOf(prefs?.autoSaveDraft ?: false) }
-    var overwriteLocal by remember { mutableStateOf(prefs?.overwriteLocal ?: false) }
-    var autoPush by remember { mutableStateOf(prefs?.autoPushEnabled ?: false) }
-    var darkMode by remember { mutableStateOf(prefs?.darkMode ?: false) }
-
-    val scope = rememberCoroutineScope()
+    val ui by viewModel.uiState.collectAsState()
 
     Column(
         modifier = modifier
@@ -66,7 +44,7 @@ fun SettingsScreen(
         SectionTitle("设置")
         Spacer(Modifier.height(16.dp))
 
-        // ===== 账号区 =====
+        // 账号区
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -79,35 +57,28 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(12.dp))
-
-                if (isLoggedIn) {
+                if (ui.isLoggedIn) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "✅ 已登录：$username",
+                            "✅ 已登录：${ui.username}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.weight(1f)
                         )
-                        Button(
-                            onClick = {
-                                prefs?.clearLogin()
-                                isLoggedIn = false
-                                onLoginStateChange?.invoke()
-                            }
-                        ) { Text("退出") }
+                        Button(onClick = viewModel::logout) { Text("退出") }
                     }
                 } else {
                     OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it },
+                        value = ui.username,
+                        onValueChange = viewModel::onUsernameChange,
                         label = { Text("用户名") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
+                        value = ui.password,
+                        onValueChange = viewModel::onPasswordChange,
                         label = { Text("密码") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -115,49 +86,26 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     Button(
-                        onClick = {
-                            if (username.isBlank() || password.isBlank()) {
-                                loginStatus = "请输入用户名和密码"
-                                return@Button
-                            }
-                            isLoggingIn = true
-                            loginStatus = "登录中..."
-                            val apiRef = api ?: return@Button
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    apiRef.login(username.trim(), password)
-                                }
-                                isLoggingIn = false
-                                if (result.isSuccess) {
-                                    prefs?.username = username.trim()
-                                    prefs?.password = password
-                                    prefs?.isLoggedIn = true
-                                    isLoggedIn = true
-                                    loginStatus = "✅ 登录成功"
-                                } else {
-                                    loginStatus = "❌ 登录失败：${result.exceptionOrNull()?.message ?: "未知错误"}"
-                                }
-                            }
-                        },
-                        enabled = !isLoggingIn,
+                        onClick = viewModel::login,
+                        enabled = !ui.isLoggingIn,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (isLoggingIn) "登录中..." else "登录") }
-                    if (loginStatus.isNotEmpty()) {
+                    ) { Text(if (ui.isLoggingIn) "登录中..." else "登录") }
+                    if (ui.loginStatus.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            loginStatus,
+                            text = ui.loginStatus,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (loginStatus.startsWith("✅")) MaterialTheme.colorScheme.primary
+                            color = if (ui.loginStatus.startsWith("✅"))
+                                MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.error
                         )
                     }
                 }
             }
         }
-
         Spacer(Modifier.height(16.dp))
 
-        // ===== 常规设置区 =====
+        // 常规设置区
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -170,45 +118,29 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(8.dp))
-
                 SettingSwitchRow(
                     title = "自动保存草稿",
                     subtitle = "编辑时每 30 秒自动保存到本地",
-                    checked = autoSaveDraft,
-                    onCheckedChange = {
-                        autoSaveDraft = it
-                        prefs?.autoSaveDraft = it
-                    }
+                    checked = ui.autoSaveDraft,
+                    onCheckedChange = viewModel::setAutoSaveDraft
                 )
-
                 SettingSwitchRow(
                     title = "同步时覆盖本地修改",
                     subtitle = "拉取时以服务器版本为准",
-                    checked = overwriteLocal,
-                    onCheckedChange = {
-                        overwriteLocal = it
-                        prefs?.overwriteLocal = it
-                    }
+                    checked = ui.overwriteLocal,
+                    onCheckedChange = viewModel::setOverwriteLocal
                 )
-
                 SettingSwitchRow(
                     title = "自动推送",
                     subtitle = "保存后自动推送修改到云端",
-                    checked = autoPush,
-                    onCheckedChange = {
-                        autoPush = it
-                        prefs?.autoPushEnabled = it
-                    }
+                    checked = ui.autoPush,
+                    onCheckedChange = viewModel::setAutoPush
                 )
-
                 SettingSwitchRow(
                     title = "深色模式",
                     subtitle = "使用深夜森林主题",
-                    checked = darkMode,
-                    onCheckedChange = {
-                        darkMode = it
-                        prefs?.darkMode = it
-                    }
+                    checked = ui.darkMode,
+                    onCheckedChange = viewModel::setDarkMode
                 )
             }
         }
@@ -242,9 +174,6 @@ private fun SettingSwitchRow(
             )
         }
         Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

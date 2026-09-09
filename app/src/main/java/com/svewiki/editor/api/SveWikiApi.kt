@@ -341,37 +341,34 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
 
     suspend fun readPage(title: String): Result<WikiPage> = withContext(Dispatchers.IO) {
         try {
-            val url = "${getApiUrl()}?action=parse&page=${
+            // 单次请求同时拿到标题与原始 wikitext（不再发冗余的 action=parse）
+            val url = "${getApiUrl()}?action=query&titles=${
                 URLEncoder.encode(title, "UTF-8")
-            }&prop=text&format=json"
+            }&prop=revisions%7Cinfo&rvprop=content%7Cids%7Ctimestamp&format=json"
             val req = Request.Builder().url(url).headers(getHeaders()).get().build()
             val resp = client.newCall(req).execute()
             val body = resp.body?.string() ?: return@withContext Result.failure(Exception("Empty"))
             val json = JsonParser.parseString(body).asJsonObject
-            val parse = json.getAsJsonObject("parse")
-            val pageTitle = parse?.get("title")?.asString ?: title
-            val text = parse?.getAsJsonObject("text")?.get("*")?.asString ?: ""
-
-            // 获取原始 wikitext（需要另一个请求）
-            val rawUrl = "${getApiUrl()}?action=query&titles=${
-                URLEncoder.encode(title, "UTF-8")
-            }&prop=revisions&rvprop=content&format=json"
-            val rawReq = Request.Builder().url(rawUrl).headers(getHeaders()).get().build()
-            val rawResp = client.newCall(rawReq).execute()
-            val rawBody = rawResp.body?.string() ?: ""
-            val rawJson = JsonParser.parseString(rawBody).asJsonObject
-
-            val pages = rawJson.getAsJsonObject("query")?.getAsJsonObject("pages")
+            val pages = json.getAsJsonObject("query")?.getAsJsonObject("pages")
+                ?: return@withContext Result.failure(Exception("页面不存在或无法读取"))
             var wikitext = ""
-            pages?.entrySet()?.firstOrNull()?.let { entry ->
-                val page = entry.value.asJsonObject
-                val revisions = page.getAsJsonArray("revisions")
-                if (revisions != null && revisions.size() > 0) {
-                    wikitext = revisions[0].asJsonObject.get("*")?.asString ?: ""
+            var revId = 0L
+            var touched = ""
+            var pageTitle = title
+            pages.entrySet().firstOrNull()?.let { entry ->
+                if (entry.key != "-1") {
+                    val page = entry.value.asJsonObject
+                    pageTitle = page.get("title")?.asString ?: title
+                    val revisions = page.getAsJsonArray("revisions")
+                    if (revisions != null && revisions.size() > 0) {
+                        val rev = revisions[0].asJsonObject
+                        wikitext = rev.get("*")?.asString ?: ""
+                        revId = rev.get("revid")?.asLong ?: 0
+                        touched = rev.get("timestamp")?.asString ?: ""
+                    }
                 }
             }
-
-            Result.success(WikiPage(title = pageTitle, content = wikitext))
+            Result.success(WikiPage(title = pageTitle, content = wikitext, revisionId = revId, touched = touched))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -469,10 +466,8 @@ class SveWikiApi(private val baseUrl: String = "https://sve.p1.wiki") {
             val resp = client.newCall(req).execute()
             val body = resp.body?.string() ?: return@withContext Result.failure(Exception("Empty"))
             val json = JsonParser.parseString(body).asJsonObject
+            // MediaWiki list=search 返回 query.search 为结果数组
             val searchResults = json
-                .getAsJsonObject("query")
-                ?.getAsJsonObject("search")
-                ?.getAsJsonArray("results") ?: json
                 .getAsJsonObject("query")
                 ?.getAsJsonArray("search")
 

@@ -21,6 +21,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ fun ManageScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     var showConfirm by remember { mutableStateOf(false) }
+    var deleteMode by remember { mutableStateOf(DeleteMode.BOTH) }
 
     Column(
         modifier = modifier
@@ -113,6 +115,14 @@ fun ManageScreen(
         }
         Spacer(Modifier.height(8.dp))
 
+        if (ui.deleteMessage.isNotEmpty()) {
+            Text(
+                text = ui.deleteMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -133,11 +143,29 @@ fun ManageScreen(
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             title = { Text("确认删除 ${ui.selectedKeys.size} 个页面？") },
-            text = { Text("将从本地存储移除选中页面。") },
+            text = {
+                Column {
+                    Text("选择删除方式：", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    listOf(
+                        DeleteMode.LOCAL to "仅删除本地",
+                        DeleteMode.CLOUD to "仅删除云端",
+                        DeleteMode.BOTH to "本地 + 云端"
+                    ).forEach { (mode, label) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = deleteMode == mode,
+                                onClick = { deleteMode = mode }
+                            )
+                            Text(label)
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 Button(onClick = {
                     showConfirm = false
-                    viewModel.deleteSelected()
+                    viewModel.deleteSelected(deleteMode)
                 }) { Text("确认删除") }
             },
             dismissButton = {

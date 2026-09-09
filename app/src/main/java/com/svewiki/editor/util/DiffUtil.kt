@@ -291,7 +291,7 @@ object DiffUtil {
                     newSegs.add(Segment(newWords[j - 1], false))
                     i--; j--
                 }
-                j > 0 && (i == 0 || dp[i][j - 1] <= dp[i - 1][j]) -> {
+                j > 0 && (i == 0 || dp[i][j - 1] < dp[i - 1][j]) -> {
                     newSegs.add(Segment(newWords[j - 1], true))
                     oldSegs.add(Segment("\u200b", false)) // 占位
                     j--

@@ -31,7 +31,7 @@ object AppViewModelFactory : ViewModelProvider.Factory {
             modelClass.isAssignableFrom(EditorViewModel::class.java) ->
                 EditorViewModel(c.api, c.storage, c.prefs, c.syncEngine) as T
             modelClass.isAssignableFrom(ManageViewModel::class.java) ->
-                ManageViewModel(c.storage) as T
+                ManageViewModel(c.storage, c.syncEngine) as T
             modelClass.isAssignableFrom(SyncViewModel::class.java) ->
                 SyncViewModel(c.syncEngine, c.prefs) as T
             modelClass.isAssignableFrom(SettingsViewModel::class.java) ->

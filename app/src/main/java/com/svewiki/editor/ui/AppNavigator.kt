@@ -1,19 +1,15 @@
 package com.svewiki.editor.ui
 
 import com.svewiki.editor.data.LocalPage
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 跨屏幕导航 / 通信事件总线。
+ * 跨屏幕导航 / 通信状态。
  *
- * 替代原先的 AppState 全局可变单例：
- * - 当前 tab 用 [StateFlow] 暴露，UI 可观察
- * - 「打开页面」请求用一次性 [SharedFlow] 事件，避免状态残留
+ * 使用 StateFlow 保存待打开页面，而不是一次性 SharedFlow 事件：
+ * 管理页切换到编辑器时，编辑器会稍后才开始订阅，StateFlow 可以可靠保留页面，避免事件丢失。
  */
 object AppNavigator {
 
@@ -21,17 +17,23 @@ object AppNavigator {
     private val _currentTab = MutableStateFlow(0)
     val currentTab: StateFlow<Int> = _currentTab.asStateFlow()
 
-    /** 待打开页面的一次性事件（编辑器订阅消费） */
-    private val _openPageRequests = MutableSharedFlow<LocalPage>(extraBufferCapacity = 1)
-    val openPageRequests: SharedFlow<LocalPage> = _openPageRequests.asSharedFlow()
+    /** 待打开页面；消费后由编辑器显式清除 */
+    private val _pendingOpenPage = MutableStateFlow<LocalPage?>(null)
+    val pendingOpenPage: StateFlow<LocalPage?> = _pendingOpenPage.asStateFlow()
 
     fun selectTab(index: Int) {
         _currentTab.value = index
     }
 
-    /** 请求在编辑器中打开某页面，并切到编辑 tab */
+    /** 请求在编辑器中打开指定页面，并切到编辑 tab */
     fun requestOpenPage(page: LocalPage) {
-        _openPageRequests.tryEmit(page)
+        // 先写入目标页面，再切换 tab，确保编辑器创建后不会丢失导航数据。
+        _pendingOpenPage.value = page
         _currentTab.value = 0
+    }
+
+    /** 编辑器成功消费页面后清除待处理请求。 */
+    fun consumeOpenPage() {
+        _pendingOpenPage.value = null
     }
 }

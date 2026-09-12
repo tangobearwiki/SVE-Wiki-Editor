@@ -30,6 +30,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +60,12 @@ fun ManageScreen(
     val ui by viewModel.uiState.collectAsState()
     var showConfirm by remember { mutableStateOf(false) }
     var deleteMode by remember { mutableStateOf(DeleteMode.BOTH) }
+
+    // 每次重新进入管理页都重新扫描本地页面元数据。
+    // 同步页拉取完成后，管理页无需重新创建 Activity/ViewModel 即可看到新页面。
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
 
     Column(
         modifier = modifier

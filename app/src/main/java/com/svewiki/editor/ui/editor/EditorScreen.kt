@@ -61,7 +61,6 @@ import com.svewiki.editor.ui.components.StatusChip
 import com.svewiki.editor.ui.theme.BerryRed
 import com.svewiki.editor.ui.theme.ForestGreen
 import com.svewiki.editor.util.DiffUtil
-import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun EditorScreen(
@@ -69,10 +68,14 @@ fun EditorScreen(
     viewModel: EditorViewModel = viewModel(factory = AppViewModelFactory)
 ) {
     val ui by viewModel.uiState.collectAsState()
+    val pendingOpenPage by AppNavigator.pendingOpenPage.collectAsState()
 
-    LaunchedEffect(Unit) {
-        AppNavigator.openPageRequests.collectLatest { page ->
+    // 使用持久化的 StateFlow 接收管理页的打开请求。
+    // 管理页切换到编辑器时，EditorScreen 才刚刚创建；SharedFlow 会丢事件，StateFlow 不会。
+    LaunchedEffect(pendingOpenPage) {
+        pendingOpenPage?.let { page ->
             viewModel.openPage(page)
+            AppNavigator.consumeOpenPage()
         }
     }
 

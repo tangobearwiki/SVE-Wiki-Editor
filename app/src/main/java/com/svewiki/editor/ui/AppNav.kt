@@ -38,20 +38,16 @@ enum class NavTab(
     SETTINGS("设置", Icons.Filled.Settings, Icons.Outlined.Settings)
 }
 
-/**
- * 应用主导航。
- * 各屏幕通过各自的 ViewModel 获取依赖（见 [AppViewModelFactory]），
- * 不再从导航层透传 api/storage/prefs/syncEngine。
- */
 @Composable
 fun AppNav() {
     val currentTab by AppNavigator.currentTab.collectAsState()
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
+                tonalElevation = 0.dp
             ) {
                 NavTab.entries.forEachIndexed { index, tab ->
                     NavigationBarItem(
@@ -70,7 +66,7 @@ fun AppNav() {
         }
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
-        when (NavTab.entries[currentTab]) {
+        when (NavTab.entries.getOrElse(currentTab) { NavTab.EDITOR }) {
             NavTab.EDITOR -> EditorScreen(modifier = contentModifier)
             NavTab.SYNC -> SyncScreen(modifier = contentModifier)
             NavTab.MANAGE -> ManageScreen(modifier = contentModifier)

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.svewiki.editor.data.LocalStorageManager
 import com.svewiki.editor.data.PageMeta
 import com.svewiki.editor.sync.SyncEngine
+import com.svewiki.editor.ui.AppNavigator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 删除模式：0=仅云端 1=仅本地 2=全部 */
 enum class DeleteMode(val code: Int) { CLOUD(0), LOCAL(1), BOTH(2) }
 
 data class ManageUiState(
@@ -23,7 +23,8 @@ data class ManageUiState(
     val selectedKeys: Set<String> = emptySet(),
     val isLoading: Boolean = true,
     val isDeleting: Boolean = false,
-    val deleteMessage: String = ""
+    val deleteMessage: String = "",
+    val statusKindOk: Boolean = true
 ) {
     val filtered: List<PageMeta>
         get() = metas.filter { meta ->
@@ -64,10 +65,21 @@ class ManageViewModel(
 
     fun clearSelection() = _uiState.update { it.copy(selectedKeys = emptySet()) }
 
-    /**
-     * 删除选中页面，支持 仅本地 / 仅云端 / 全部 三种模式。
-     * 云端删除走 SyncEngine.deletePages（带 API 调用与日志）。
-     */
+    fun openInEditor(meta: PageMeta) {
+        viewModelScope.launch {
+            val page = withContext(Dispatchers.IO) {
+                storage.loadPage(meta.title, meta.namespace)
+            }
+            if (page != null) {
+                AppNavigator.requestOpenPage(page)
+            } else {
+                _uiState.update {
+                    it.copy(deleteMessage = "无法打开：本地文件缺失", statusKindOk = false)
+                }
+            }
+        }
+    }
+
     fun deleteSelected(mode: DeleteMode) {
         val s = _uiState.value
         val toDelete = s.filtered.filter { it.key in s.selectedKeys }
@@ -79,6 +91,7 @@ class ManageViewModel(
                 syncEngine.deletePages(pairs, deleteMode = mode.code)
             }
             val metas = withContext(Dispatchers.IO) { storage.loadAllMetas() }
+            val ok = result.failed.isEmpty()
             val msg = buildString {
                 append("删除完成：成功 ${result.success.size}")
                 if (result.failed.isNotEmpty()) append("，失败 ${result.failed.size}")
@@ -88,7 +101,8 @@ class ManageViewModel(
                     metas = metas,
                     selectedKeys = emptySet(),
                     isDeleting = false,
-                    deleteMessage = msg
+                    deleteMessage = msg,
+                    statusKindOk = ok
                 )
             }
         }

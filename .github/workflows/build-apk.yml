@@ -2,7 +2,7 @@ name: Android 16 Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, refactor/** ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:

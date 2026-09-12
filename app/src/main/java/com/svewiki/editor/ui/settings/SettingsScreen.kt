@@ -9,11 +9,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -26,7 +26,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.svewiki.editor.ui.AppViewModelFactory
-import com.svewiki.editor.ui.components.SectionTitle
+import com.svewiki.editor.ui.components.StatusChip
+import com.svewiki.editor.ui.components.SurfaceCard
+import com.svewiki.editor.ui.theme.BerryRed
+import com.svewiki.editor.ui.theme.ForestGreen
 
 @Composable
 fun SettingsScreen(
@@ -39,33 +42,33 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        SectionTitle("设置")
+        Text("设置", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(16.dp))
 
-        // 账号区
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    "账号",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+        SurfaceCard {
+            Column {
+                Text("账号", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(12.dp))
                 if (ui.isLoggedIn) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        ui.username,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    val info = ui.userInfo
+                    if (info != null) {
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "✅ 已登录：${ui.username}",
+                            "${viewModel.groupLabel(info)}  ·  ${info.editCount} 次编辑",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Button(onClick = viewModel::logout) { Text("退出") }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
+                        Text("退出登录")
                     }
                 } else {
                     OutlinedTextField(
@@ -73,6 +76,7 @@ fun SettingsScreen(
                         onValueChange = viewModel::onUsernameChange,
                         label = { Text("用户名") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
@@ -82,6 +86,7 @@ fun SettingsScreen(
                         label = { Text("密码") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(12.dp))
@@ -92,12 +97,9 @@ fun SettingsScreen(
                     ) { Text(if (ui.isLoggingIn) "登录中..." else "登录") }
                     if (ui.loginStatus.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        Text(
+                        StatusChip(
                             text = ui.loginStatus,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (ui.loginStatus.startsWith("✅"))
-                                MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error
+                            color = if (ui.loginOk) ForestGreen else BerryRed
                         )
                     }
                 }
@@ -105,22 +107,13 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        // 常规设置区
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    "常规",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+        SurfaceCard {
+            Column {
+                Text("常规", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 SettingSwitchRow(
                     title = "自动保存草稿",
-                    subtitle = "编辑时每 30 秒自动保存到本地",
+                    subtitle = "编辑停顿 30 秒后写入本地",
                     checked = ui.autoSaveDraft,
                     onCheckedChange = viewModel::setAutoSaveDraft
                 )
@@ -132,13 +125,13 @@ fun SettingsScreen(
                 )
                 SettingSwitchRow(
                     title = "自动推送",
-                    subtitle = "保存后自动推送修改到云端",
+                    subtitle = "保存草稿后立刻推送到云端",
                     checked = ui.autoPush,
                     onCheckedChange = viewModel::setAutoPush
                 )
                 SettingSwitchRow(
                     title = "深色模式",
-                    subtitle = "使用深夜森林主题",
+                    subtitle = "深夜森林主题，立即生效",
                     checked = ui.darkMode,
                     onCheckedChange = viewModel::setDarkMode
                 )
@@ -161,14 +154,10 @@ private fun SettingSwitchRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            Text(title, style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(2.dp))
             Text(
-                text = subtitle,
+                subtitle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

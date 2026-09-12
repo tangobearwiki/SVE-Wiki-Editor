@@ -10,12 +10,6 @@ import com.svewiki.editor.ui.manage.ManageViewModel
 import com.svewiki.editor.ui.settings.SettingsViewModel
 import com.svewiki.editor.ui.sync.SyncViewModel
 
-/**
- * 统一的 ViewModel 工厂：从 [SveWikiApp.container] 取依赖注入。
- *
- * 在 Composable 中通过
- * `viewModel(factory = AppViewModelFactory)` 使用。
- */
 object AppViewModelFactory : ViewModelProvider.Factory {
 
     private fun container(extras: CreationExtras): AppContainer {
@@ -31,11 +25,11 @@ object AppViewModelFactory : ViewModelProvider.Factory {
             modelClass.isAssignableFrom(EditorViewModel::class.java) ->
                 EditorViewModel(c.api, c.storage, c.prefs, c.syncEngine) as T
             modelClass.isAssignableFrom(ManageViewModel::class.java) ->
-                ManageViewModel(c.storage) as T
+                ManageViewModel(c.storage, c.syncEngine) as T
             modelClass.isAssignableFrom(SyncViewModel::class.java) ->
                 SyncViewModel(c.syncEngine, c.prefs) as T
             modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
-                SettingsViewModel(c.prefs, c.api) as T
+                SettingsViewModel(c.prefs, c.api, c.theme, c) as T
             else -> throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
         }
     }

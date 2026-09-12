@@ -1,5 +1,7 @@
 package com.svewiki.editor.ui.manage
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,8 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -21,6 +26,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,10 +43,13 @@ import com.svewiki.editor.data.PageMeta
 import com.svewiki.editor.data.WikiNamespaces
 import com.svewiki.editor.ui.AppViewModelFactory
 import com.svewiki.editor.ui.components.EmptyState
-import com.svewiki.editor.ui.components.SectionTitle
+import com.svewiki.editor.ui.components.StatusChip
+import com.svewiki.editor.ui.theme.BerryRed
+import com.svewiki.editor.ui.theme.ForestGreen
+import com.svewiki.editor.ui.theme.SunGold
 
 private val nsFilterOptions = listOf(-1 to "全部") +
-    listOf(0, 2, 4, 6, 8, 10, 12, 14, 828).map { it to WikiNamespaces.getDisplayName(it) }
+    WikiNamespaces.SYNC_IDS.map { it to WikiNamespaces.getDisplayName(it) }
 
 @Composable
 fun ManageScreen(
@@ -49,13 +58,14 @@ fun ManageScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     var showConfirm by remember { mutableStateOf(false) }
+    var deleteMode by remember { mutableStateOf(DeleteMode.BOTH) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        SectionTitle("页面管理")
+        Text("页面管理", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
 
         OutlinedTextField(
@@ -63,15 +73,19 @@ fun ManageScreen(
             onValueChange = viewModel::onSearchChange,
             label = { Text("搜索页面") },
             singleLine = true,
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(8.dp))
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            nsFilterOptions.take(5).forEach { (id, name) ->
+            nsFilterOptions.forEach { (id, name) ->
                 FilterChip(
                     selected = ui.nsFilter == id,
                     onClick = { viewModel.onNsFilterChange(id) },
@@ -82,7 +96,7 @@ fun ManageScreen(
                 )
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         Text(
             text = "共 ${ui.filtered.size} 页，已选 ${ui.selectedKeys.size}",
@@ -93,26 +107,34 @@ fun ManageScreen(
 
         if (ui.filtered.isEmpty()) {
             EmptyState(
-                icon = "📄",
                 title = if (ui.isLoading) "加载中..." else "暂无页面",
-                subtitle = if (ui.searchQuery.isBlank()) "去同步页拉取全站吧" else "换个关键词试试"
+                subtitle = if (ui.searchQuery.isBlank()) "去同步页拉取全站" else "换个关键词试试",
+                modifier = Modifier.weight(1f)
             )
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(ui.filtered, key = { it.key }) { meta ->
                     ManagePageRow(
                         meta = meta,
                         selected = meta.key in ui.selectedKeys,
-                        onToggle = { viewModel.onToggleSelect(meta.key) }
+                        onToggle = { viewModel.onToggleSelect(meta.key) },
+                        onOpen = { viewModel.openInEditor(meta) }
                     )
                 }
             }
         }
         Spacer(Modifier.height(8.dp))
 
+        if (ui.deleteMessage.isNotEmpty()) {
+            StatusChip(
+                text = ui.deleteMessage,
+                color = if (ui.statusKindOk) ForestGreen else BerryRed
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -133,11 +155,34 @@ fun ManageScreen(
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             title = { Text("确认删除 ${ui.selectedKeys.size} 个页面？") },
-            text = { Text("将从本地存储移除选中页面。") },
+            text = {
+                Column {
+                    Text("选择删除方式：", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    listOf(
+                        DeleteMode.LOCAL to "仅删除本地",
+                        DeleteMode.CLOUD to "仅删除云端",
+                        DeleteMode.BOTH to "本地 + 云端"
+                    ).forEach { (mode, label) ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { deleteMode = mode }
+                        ) {
+                            RadioButton(
+                                selected = deleteMode == mode,
+                                onClick = { deleteMode = mode }
+                            )
+                            Text(label)
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 Button(onClick = {
                     showConfirm = false
-                    viewModel.deleteSelected()
+                    viewModel.deleteSelected(deleteMode)
                 }) { Text("确认删除") }
             },
             dismissButton = {
@@ -151,10 +196,12 @@ fun ManageScreen(
 private fun ManagePageRow(
     meta: PageMeta,
     selected: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onOpen: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surface
@@ -164,23 +211,27 @@ private fun ManagePageRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(checked = selected, onCheckedChange = { onToggle() })
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpen)
+                    .padding(vertical = 8.dp, horizontal = 4.dp)
+            ) {
                 Text(
                     text = meta.title,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (meta.isModified) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onBackground,
+                    color = if (meta.isModified) SunGold else MaterialTheme.colorScheme.onBackground,
                     maxLines = 1
                 )
                 Text(
                     text = "${WikiNamespaces.getDisplayName(meta.namespace)} · " +
                         (if (meta.isModified) "已修改" else "已同步"),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (meta.isModified) MaterialTheme.colorScheme.primary
+                    color = if (meta.isModified) SunGold
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

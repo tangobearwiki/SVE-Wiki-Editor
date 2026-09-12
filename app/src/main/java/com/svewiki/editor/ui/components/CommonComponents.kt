@@ -14,7 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,11 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-
-// ========== 概览统计卡片 ==========
 
 @Composable
 fun StatCard(
@@ -35,25 +38,26 @@ fun StatCard(
     modifier: Modifier = Modifier,
     valueColor: Color = MaterialTheme.colorScheme.primary
 ) {
-    androidx.compose.material3.Card(
+    Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = androidx.compose.material3.CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 1.dp)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .padding(vertical = 18.dp, horizontal = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = value,
                 style = MaterialTheme.typography.headlineMedium,
                 color = valueColor,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -64,8 +68,6 @@ fun StatCard(
         }
     }
 }
-
-// ========== 状态标签（小圆点 + 文字） ==========
 
 @Composable
 fun StatusChip(
@@ -82,7 +84,7 @@ fun StatusChip(
     ) {
         Box(
             Modifier
-                .size(8.dp)
+                .size(7.dp)
                 .clip(CircleShape)
                 .background(color)
         )
@@ -90,20 +92,17 @@ fun StatusChip(
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = color,
-            fontSize = 11.sp
+            color = color
         )
     }
 }
 
-// ========== 空态提示 ==========
-
 @Composable
 fun EmptyState(
-    icon: String,
     title: String,
     subtitle: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    icon: ImageVector = Icons.Outlined.FolderOpen
 ) {
     Column(
         modifier = modifier
@@ -112,9 +111,11 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = icon,
-            fontSize = 44.sp
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(40.dp)
         )
         Spacer(Modifier.height(16.dp))
         Text(
@@ -133,8 +134,6 @@ fun EmptyState(
     }
 }
 
-// ========== 加载态 ==========
-
 @Composable
 fun LoadingState(modifier: Modifier = Modifier, message: String? = null) {
     Column(
@@ -146,7 +145,8 @@ fun LoadingState(modifier: Modifier = Modifier, message: String? = null) {
     ) {
         CircularProgressIndicator(
             color = MaterialTheme.colorScheme.primary,
-            strokeWidth = 3.dp
+            strokeWidth = 3.dp,
+            modifier = Modifier.size(28.dp)
         )
         if (message != null) {
             Spacer(Modifier.height(12.dp))
@@ -158,8 +158,6 @@ fun LoadingState(modifier: Modifier = Modifier, message: String? = null) {
         }
     }
 }
-
-// ========== 页面标题 ==========
 
 @Composable
 fun SectionTitle(
@@ -181,32 +179,20 @@ fun SectionTitle(
     }
 }
 
-// ========== 信息行（键值对） ==========
-
 @Composable
-fun InfoRow(
-    label: String,
-    value: String,
+fun SurfaceCard(
     modifier: Modifier = Modifier,
-    valueColor: Color = MaterialTheme.colorScheme.onBackground
+    content: @Composable () -> Unit
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        )
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(96.dp)
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = valueColor,
-            fontWeight = FontWeight.Medium
-        )
+        Box(Modifier.padding(16.dp)) { content() }
     }
 }

@@ -33,6 +33,11 @@ object WikiNamespaces {
     const val MODULE = 828
     const val MODULE_TALK = 829
 
+    /** 同步默认覆盖的内容命名空间（不含讨论页） */
+    val SYNC_IDS: List<Int> = listOf(
+        MAIN, USER, PROJECT, FILE, MEDIAWIKI, TEMPLATE, HELP, CATEGORY, MODULE
+    )
+
     fun getDisplayName(id: Int): String = when (id) {
         MAIN -> "主空间"
         TALK -> "讨论"
@@ -76,26 +81,55 @@ object WikiNamespaces {
         MODULE_TALK -> "模块讨论:"
         else -> "Ns$id:"
     }
+
+    /**
+     * 根据完整标题推断命名空间。
+     * 长前缀优先，兼容中英两种 MediaWiki 前缀。
+     */
+    fun detectFromTitle(title: String): Int {
+        val prefixes = listOf(
+            "用户讨论:" to USER_TALK, "User talk:" to USER_TALK,
+            "模板讨论:" to TEMPLATE_TALK, "Template talk:" to TEMPLATE_TALK,
+            "分类讨论:" to CATEGORY_TALK, "Category talk:" to CATEGORY_TALK,
+            "文件讨论:" to FILE_TALK, "File talk:" to FILE_TALK,
+            "帮助讨论:" to HELP_TALK, "Help talk:" to HELP_TALK,
+            "站务讨论:" to PROJECT_TALK, "Project talk:" to PROJECT_TALK,
+            "MediaWiki讨论:" to MEDIAWIKI_TALK, "MediaWiki talk:" to MEDIAWIKI_TALK,
+            "模块讨论:" to MODULE_TALK, "Module talk:" to MODULE_TALK,
+            "用户:" to USER, "User:" to USER,
+            "模板:" to TEMPLATE, "Template:" to TEMPLATE,
+            "分类:" to CATEGORY, "Category:" to CATEGORY,
+            "文件:" to FILE, "File:" to FILE, "Image:" to FILE,
+            "帮助:" to HELP, "Help:" to HELP,
+            "站务:" to PROJECT, "Project:" to PROJECT,
+            "MediaWiki:" to MEDIAWIKI,
+            "模块:" to MODULE, "Module:" to MODULE,
+            "讨论:" to TALK, "Talk:" to TALK
+        )
+        for ((prefix, id) in prefixes) {
+            if (title.startsWith(prefix, ignoreCase = true)) return id
+        }
+        return MAIN
+    }
 }
 
 /**
- * 本地存储的页面
+ * 本地存储的页面。content 放在最后，新写入的 JSON 便于只读元数据。
  */
 data class LocalPage(
     val title: String,
     val namespace: Int = 0,
-    val content: String = "",
     val revisionId: Long = 0,
     val lastSyncTime: Long = 0,
     val lastModifiedTime: Long = 0,
     val isModified: Boolean = false,
     val pageId: Long = 0,
-    val touched: String = ""
+    val touched: String = "",
+    val content: String = ""
 )
 
 /**
  * 页面轻量元数据（不含 content）
- * 用于列表展示和统计，避免全量加载页面内容导致卡顿和内存占用
  */
 data class PageMeta(
     val title: String,
@@ -111,16 +145,10 @@ data class PageMeta(
     val key: String get() = "$namespace:$title"
 }
 
-/**
- * 同步状态
- */
 enum class SyncStatus {
     IDLE, LOGIN, FETCHING_NAMESPACES, FETCHING_PAGES, PUSHING, COMPLETED, ERROR
 }
 
-/**
- * 同步进度
- */
 data class SyncProgress(
     val status: SyncStatus = SyncStatus.IDLE,
     val currentNamespace: String = "",
@@ -128,11 +156,11 @@ data class SyncProgress(
     val totalPages: Int = 0,
     val processedPages: Int = 0,
     val message: String = ""
-)
+) {
+    val fraction: Float
+        get() = if (totalPages <= 0) 0f else (processedPages.toFloat() / totalPages).coerceIn(0f, 1f)
+}
 
-/**
- * 用户信息（含身份组和编辑数）
- */
 data class UserInfo(
     val name: String = "",
     val editCount: Int = 0,
@@ -141,9 +169,6 @@ data class UserInfo(
     val isLoggedIn: Boolean = false
 )
 
-/**
- * 用户身份组中文翻译
- */
 object UserGroups {
     val displayNames = mapOf(
         "bot" to "机器人",
@@ -163,16 +188,11 @@ object UserGroups {
     fun getDisplayName(group: String): String = displayNames[group] ?: group
 }
 
-/**
- * 推送结果
- */
 data class PushResult(
     val success: MutableList<String> = mutableListOf(),
     val failed: MutableList<Pair<String, String>> = mutableListOf(),
     val skipped: MutableList<String> = mutableListOf()
 )
-
-// ============ 原有模型保留 ============
 
 data class LoginTokens(
     val loginToken: String = "",
@@ -208,4 +228,12 @@ data class ServerMessage(
 data class SearchResult(
     val title: String,
     val snippet: String
+)
+
+/** 本地库一次扫描得到的统计，避免多次全量遍历 */
+data class StorageStats(
+    val totalPages: Int = 0,
+    val modifiedCount: Int = 0,
+    val totalSizeBytes: Long = 0,
+    val namespaces: List<Pair<String, Int>> = emptyList()
 )

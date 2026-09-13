@@ -475,22 +475,22 @@ object WikiTextHighlighter {
     private fun highlightMarkdown(text: String): AnnotatedString = buildAnnotatedString {
         append(text)
         if (text.length > 120_000) return@buildAnnotatedString
-        Regex("(?m)^#{1,6}\\s.*$").findAll(text).forEach {
+        Regex("""(?m)^#{1,6}\s.*$""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorHeading, fontWeight = FontWeight.SemiBold), it.range.first, it.range.last + 1)
         }
-        Regex("(?m)^\\s*([-*+] |\\d+\\. )").findAll(text).forEach {
+        Regex("""(?m)^\s*([-*+] |\d+\. )""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorList, fontWeight = FontWeight.Medium), it.range.first, it.range.last + 1)
         }
-        Regex("\\*\\*[^*]+\\*\\*").findAll(text).forEach {
+        Regex("""\*\*[^*]+\*\*""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorBold, fontWeight = FontWeight.Bold), it.range.first, it.range.last + 1)
         }
-        Regex("\\*[^*]+\\*").findAll(text).forEach {
+        Regex("""\*[^*]+\*""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorItalic, fontStyle = FontStyle.Italic), it.range.first, it.range.last + 1)
         }
-        Regex("`[^`]+`").findAll(text).forEach {
+        Regex("""`[^`]+`""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorTag), it.range.first, it.range.last + 1)
         }
-        Regex("\\[[^]]+\\]\\([^)]+\\)").findAll(text).forEach {
+        Regex("""\[[^]]+\]\([^)]+\)""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorLink), it.range.first, it.range.last + 1)
         }
     }

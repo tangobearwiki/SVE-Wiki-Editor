@@ -438,18 +438,20 @@ object WikiTextHighlighter {
     private fun highlightJson(text: String): AnnotatedString = buildAnnotatedString {
         append(text)
         if (text.length > 120_000) return@buildAnnotatedString
-        // 字符串键
-        Regex(""""(?:[^"\\]|\\.)*"(?=\s*:)""").findAll(text).forEach {
-            addStyle(SpanStyle(color = colorTplName), it.range.first, it.range.last + 1)
-        }
-        // 普通字符串
-        Regex(""""(?:[^"\\]|\\.)*""").findAll(text).forEach {
-            if (it.range.last + 1 >= text.length || text.getOrNull(it.range.last + 1) != ':') {
-                addStyle(SpanStyle(color = colorLink), it.range.first, it.range.last + 1)
+        val q = '"' // 避免 raw string 引号歧义
+        val strPattern = Regex(q + "(?:[^" + q + "\\\\]|\\\\.)*" + q)
+        // 第一遍：键（后面跟冒号的字符串）染模板名色
+        strPattern.findAll(text).forEach { m ->
+            var p = m.range.last + 1
+            while (p < text.length && text[p].isWhitespace()) p++
+            if (p < text.length && text[p] == ':') {
+                addStyle(SpanStyle(color = colorTplName), m.range.first, m.range.last + 1)
+            } else {
+                addStyle(SpanStyle(color = colorLink), m.range.first, m.range.last + 1)
             }
         }
         // 数字 / 布尔 / null
-        Regex("\b(true|false|null|-?\d+(\.\d+)?([eE][+-]?\d+)?)\b").findAll(text).forEach {
+        Regex("""(?<!["\w])(true|false|null|-?\d+(\.\d+)?([eE][+-]?\d+)?)(?![\w"])""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorParamName), it.range.first, it.range.last + 1)
         }
     }
@@ -457,17 +459,17 @@ object WikiTextHighlighter {
     private fun highlightLua(text: String): AnnotatedString = buildAnnotatedString {
         append(text)
         if (text.length > 120_000) return@buildAnnotatedString
-        Regex("(?m)--\[\[[\s\S]*?\]\]|--.*$").findAll(text).forEach {
+        Regex("""(?m)--\[\[[\s\S]*?\]\]|--.*$""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorComment, fontStyle = FontStyle.Italic), it.range.first, it.range.last + 1)
         }
-        Regex("\b(local|function|end|if|then|else|elseif|return|for|while|do|in|and|or|not|nil|true|false|repeat|until|break)\b")
+        Regex("""\b(local|function|end|if|then|else|elseif|return|for|while|do|in|and|or|not|nil|true|false|repeat|until|break)\b""")
             .findAll(text).forEach {
                 addStyle(SpanStyle(color = colorTemplate, fontWeight = FontWeight.Medium), it.range.first, it.range.last + 1)
             }
         Regex(""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorLink), it.range.first, it.range.last + 1)
         }
-        Regex("\b\d+(\.\d+)?\b").findAll(text).forEach {
+        Regex("""\b\d+(\.\d+)?\b""").findAll(text).forEach {
             addStyle(SpanStyle(color = colorParamName), it.range.first, it.range.last + 1)
         }
     }
